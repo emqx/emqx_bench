@@ -10,10 +10,10 @@
 -author("DDDHuang").
 
 %% API
--export([encode/1, decode/1, decode_trans/1]).
--export([get_param/3]).
+-export([encode/1, decode/1]).
+-export([get_param/3, get_uri_path/1]).
 
--export([get_message_id_token/1,get_message_id/1, get_token/1]).
+%%-export([get_message_id_token/1,get_message_id/1, get_token/1]).
 
 -export([build_option/2]).
 
@@ -39,7 +39,8 @@ encode(#coap_message{
             (encode_payload(PayLoad))]).
 
 encode_options(Options) ->
-    list_to_binary(encode_options(Options, 0, [])).
+    SortOption = fun(#option{code = Code1},#option{code = Code2}) -> Code2 >= Code1 end,
+    list_to_binary(encode_options(lists:sort(SortOption, Options), 0, [])).
 encode_options([Option = #option{code = Code} | Tail], LastOptionCode, Result) ->
     encode_options(Tail, Code, Result ++ [encode_option(LastOptionCode, Option)]);
 encode_options([], _LastOptionCode, Result) ->
@@ -89,64 +90,15 @@ decode_delta_len(Delta, Tail)                              when Delta <  13 -> {
 decode_delta_len(Delta, <<DeltaTail:8,  Tail/binary>>)     when Delta == 13 -> {DeltaTail + 13,    Tail};
 decode_delta_len(Delta, <<DeltaTail:16, Tail/binary>>)     when Delta == 14 -> {DeltaTail + 269,   Tail}.
 
-%%------------------------------------------------------------------
-%% request & response
-%%------------------------------------------------------------------
-decode_trans(<<Version:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, MessageID:16, Token:TKL/bytes, Tail/binary>>)->
-    Version = 1,
-    Type = get_type_by_code(TypeCode),
-    Method = get_method_by_code(MethodCode, MethodCodeDetail),
-    {OptionList, PayLoad} = decode_options_payload(Tail),
-    Trans = #coap_trans{
-        method  = Method,
-        path    = <<>>,
-        query   = [],
-        param   = [{type, Type}, {messageId, MessageID}, {token, Token}],
-        body    = PayLoad
-    },
-    {request_or_response(Type), add_trans_params(OptionList, Trans)}.
+get_uri_path(#coap_message{options = Options})->
+    get_uri_path(Options, "").
+get_uri_path([#option{name = uri_path, value = Value} | Tail], Result)->
+    get_uri_path(Tail, list_to_binary([Result, "/", Value]));
+get_uri_path([#option{name = _OtherOption, value = _Value} | Tail], Result)->
+    get_uri_path(Tail, Result);
+get_uri_path([], Result)->
+    Result.
 
-request_or_response(?ACK) -> response;
-request_or_response(_Type)-> request.
-
-add_trans_params([],Trans) -> Trans;
-add_trans_params([Option | Options],Trans) ->
-    add_trans_params(Options, add_trans_param(Option,Trans)).
-
-%% request
-add_trans_param(#option{name = uri_path, value = Value},#coap_trans{path = Path} = Trans)->
-    NewPath = list_to_binary([Path, "/", Value]),
-    Trans#coap_trans{ path = NewPath};
-add_trans_param(#option{name = location_path, value = Value},#coap_trans{path = Path} = Trans)->
-    NewPath = list_to_binary([Path, "/", Value]),
-    Trans#coap_trans{ path = NewPath};
-add_trans_param(#option{name = uri_query, value = Value},#coap_trans{query = Query} = Trans)->
-    [QueryKey,QueryValue] = binary:split(Value, [<<"=">>]),
-    Trans#coap_trans{query = [{QueryKey, QueryValue} | Query]};
-add_trans_param(#option{name = location_query, value = Value},#coap_trans{query = Query} = Trans)->
-    [QueryKey,QueryValue] = binary:split(Value, [<<"=">>]),
-    Trans#coap_trans{query = [{QueryKey, QueryValue} | Query]};
-add_trans_param(#option{name = Name, value = Value},#coap_trans{param = Param} = Trans)->
-    Trans#coap_trans{param = [{Name, Value} | Param]}.
-
-%%------------------------------------------------------------------
-%% request & response param
-%%------------------------------------------------------------------
-get_message_id_token(CoAPTrans)->{get_message_id(CoAPTrans),get_token(CoAPTrans)}.
-
-get_message_id(#coap_message{id = MessageID}) -> MessageID;
-get_message_id(#coap_trans{param = Param}) ->
-    [MessageID] = get_param(Param, messageId, integer,[]),
-    MessageID.
-
-get_token(#coap_message{token = Token}) -> Token;
-get_token(#coap_trans{param = Param}) ->
-    [Token] = get_param(Param, token, binary,[]),
-    Token.
-
--spec get_param(#coap_trans{} | #coap_message{}, atom(), integer | binary) -> list().
-get_param(#coap_trans{param = Param} = CoAPTrans, Key, DataType) when is_record(CoAPTrans, coap_trans) ->
-    get_param(Param, Key, DataType, []);
 get_param(#coap_message{options = Options} = CoAPMessage, Key, DataType) when is_record(CoAPMessage, coap_message)->
     get_param(Options, Key, DataType, []).
 

@@ -21,22 +21,6 @@
     payload     ::      binary() | ?NO_PAYLOAD
 }).
 
-%% coap message trans to http request & response
--record(coap_trans,{
-    method ,            %% #method{}
-    path        ::      binary(),
-    query       ::      list(), %% [{key, value}, {key2, value2}...]
-    param       ::      list(), %% [{key, value}, {key2, value2}...]
-    body        ::      binary() | ?NO_PAYLOAD | json | tlv
-}).
-
-%%-record(coap_response,{
-%%    method ,            %% #method{}
-%%    path        ::      binary(),
-%%    param  ,            %% map
-%%    body        ::      binary() | ?NO_PAYLOAD | json | tlv
-%%}).
-
 -record(method,
 {
     name        ::      atom(),
@@ -69,7 +53,7 @@
 -define( MAX_AGE                        , #option{name = max_age                   , code = 14     }).
 -define( URI_QUERY                      , #option{name = uri_query                 , code = 15     }).
 -define( ACCEPT                         , #option{name = accept                    , code = 17     }).
--define( LOCATION_QUERY                 , #option{name = location_query             , code = 20     }).
+-define( LOCATION_QUERY                 , #option{name = location_query            , code = 20     }).
 -define( PROXY_URI                      , #option{name = proxy_uri                 , code = 35     }).
 -define( PROXY_SCHEME                   , #option{name = proxy_scheme              , code = 39     }).
 -define( SIZE1                          , #option{name = size1                     , code = 60     }).
