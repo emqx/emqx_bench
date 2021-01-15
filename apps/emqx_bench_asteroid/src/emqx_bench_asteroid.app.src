@@ -1,0 +1,19 @@
+%%%-------------------------------------------------------------------
+%%% @author DDDHuang
+%%% @copyright (C) 2021, <COMPANY>
+%%% @doc
+%%%
+%%% @end
+%%% Created : 04. 1月 2021 5:11 下午
+%%%-------------------------------------------------------------------
+{application, emqx_bench_asteroid, [
+    {description, ""},
+    {vsn, "1"},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {mod, {emqx_bench_asteroid, []}},
+    {env, []}
+]}.
