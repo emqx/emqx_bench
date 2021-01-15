@@ -1,0 +1,6 @@
+-sname emqx_bench
+
+-setcookie emqx_bench_cookie
+
++K true
++A30

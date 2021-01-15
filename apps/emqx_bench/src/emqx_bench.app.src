@@ -1,0 +1,21 @@
+{application, emqx_bench,
+    [{description, "An OTP application"},
+        {vsn, "0.1.0"},
+        {registered, []},
+        {mod, {emqx_bench_app, []}},
+        {applications,
+            [kernel,
+                stdlib,
+                lwm2m_coap,
+                uuid,
+                jsx,
+                getopt,
+                emqtt,
+                getopt
+            ]},
+        {env, []},
+        {modules, []},
+
+        {licenses, ["Apache 2.0"]},
+        {links, []}
+    ]}.

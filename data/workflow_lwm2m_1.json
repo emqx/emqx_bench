@@ -1,0 +1,98 @@
+[
+  {
+    "workflow_id": "register_only",
+    "protocol": "lwm2m",
+    "server_ip": "221.229.214.202",
+    "server_port": 5683,
+    "clients_info": {
+      "data_acquisition_mode": "localfile",
+      "file_path": "data/lw_info.csv"
+    },
+    "work_flow": [
+      {
+        "task": "register",
+        "lifetime": 120,
+        "timeout": 1000,
+        "object_links": "</>;rt=\"oma.lwm2m\",</3/0>,</19/0>"
+      },
+      {
+        "task": "wait_observe",
+        "path": "/3/0",
+        "allow_retry": true,
+        "body": "$payload_3_0",
+        "content_format": "application/vnd.oma.lwm2m+tlv",
+        "timeout": 1000
+      },
+      {
+        "task": "wait_observe",
+        "path": "19/0/0",
+        "allow_retry": true,
+        "body": "$payload_19_0_0",
+        "content_format": "application/octet-stream",
+        "timeout": 1000
+      },
+      {
+        "task": "notify",
+        "path": "19/0/0",
+        "body": "{\"property\":22,\"serviceId\":1}",
+        "content_format": "application/octet-stream"
+      },
+      {
+        "task": "sleep",
+        "interval": 3000
+      },
+      {
+        "task": "deregister",
+        "timeout": 1000
+      }
+    ]
+  },
+  {
+    "workflow_id": "register_only_2",
+    "protocol": "lwm2m",
+    "server_ip": "221.229.214.202",
+    "server_port": 5683,
+    "clients_info": {
+      "data_acquisition_mode": "localfile",
+      "file_path": "data/lw_info2.csv"
+    },
+    "work_flow": [
+      {
+        "task": "register",
+        "lifetime": 120,
+        "timeout": 1000,
+        "object_links": "</>;rt=\"oma.lwm2m\",</3/0>,</19/0>"
+      },
+      {
+        "task": "wait_observe",
+        "path": "/3/0",
+        "allow_retry": true,
+        "body": "$payload_3_0",
+        "content_format": "application/vnd.oma.lwm2m+tlv",
+        "timeout": 1000
+      },
+      {
+        "task": "wait_observe",
+        "path": "19/0/0",
+        "allow_retry": true,
+        "body": "$payload_19_0_0",
+        "content_format": "application/octet-stream",
+        "timeout": 1000
+      },
+      {
+        "task": "notify",
+        "path": "19/0/0",
+        "body": "{\"property\":22,\"serviceId\":1}",
+        "content_format": "application/octet-stream"
+      },
+      {
+        "task": "sleep",
+        "interval": 3000
+      },
+      {
+        "task": "deregister",
+        "timeout": 1000
+      }
+    ]
+  }
+]
