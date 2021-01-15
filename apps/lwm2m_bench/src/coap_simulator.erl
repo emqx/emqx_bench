@@ -97,23 +97,27 @@ next_uri_observe(State, [] = ObserverIndexList) when is_list(ObserverIndexList) 
 %%--------------------------------------------------------------------------------
 %%  handle message
 %%--------------------------------------------------------------------------------
+handle_message(State, {request, #coap_trans{path = <<"/4/0/8">>} = CoAPTrans}) ->
+    {MessageID, Token} = coap_message_util:get_message_id_token(CoAPTrans),
+    CoAPMessage = response_auto_observe_4_0_8(MessageID, Token),
+    {next_state, working, send(State, CoAPMessage)};
 handle_message(#coap_state{uri_observe = ObserverIndex}= State,
-    {request, #coap_trans{path = <<"/3/0">>} = CoAPTrans})->
+    {request, #coap_trans{path = <<"/3/0">>} = CoAPTrans}) ->
     {MessageID, Token} = coap_message_util:get_message_id_token(CoAPTrans),
     CoAPMessage = response_auto_observe_3_0(ObserverIndex + 1, MessageID, Token),
     {next_state, working, send(State, CoAPMessage)};
 handle_message(#coap_state{uri_observe = ObserverIndex} = State,
-    {request, #coap_trans{path = <<"/19/0/0">>} = CoAPTrans})->
+    {request, #coap_trans{path = <<"/19/0/0">>} = CoAPTrans}) ->
     {MessageID, Token} = coap_message_util:get_message_id_token(CoAPTrans),
     CoAPMessage = response_auto_observe_19_0_0(ObserverIndex, MessageID, Token),
     {next_state, working, send(State#coap_state{token_19_0_0 = Token}, CoAPMessage)};
-handle_message(_State, {request, _CoAPTrans})->
+handle_message(_State, {request, _CoAPTrans}) ->
     io:format("get a ? request ~n"),
     keep_state_and_data;
-handle_message(_State, {response, CoAPTrans})->
+handle_message(_State, {response, CoAPTrans}) ->
     io:format("get a resposne ~p~n", [CoAPTrans]),
     keep_state_and_data;
-handle_message(_State, UnKnowData)->
+handle_message(_State, UnKnowData) ->
     io:format("unknow data ? ~p~n",[UnKnowData]),
     keep_state_and_data.
 
@@ -137,7 +141,19 @@ register(IMEI) ->
         payload = <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>
     }.
 
-response_auto_observe_19_0_0(ObserverIndex, MessageID, Token)->
+response_auto_observe_4_0_8(MessageID, Token) ->
+    Options = [
+        coap_message_util:build_option(?CONTENT_FORMAT, ?TEXT_PLAIN)
+    ],
+    #coap_message{
+        type    = ?ACK,
+        method  = ?CONTENT,
+        id      = MessageID,
+        token   = Token,
+        options = Options,
+        payload = ?NO_PAYLOAD
+    }.
+response_auto_observe_19_0_0(ObserverIndex, MessageID, Token) ->
     Options = [
         coap_message_util:build_option(?URI_OBSERVE, <<ObserverIndex:8>>),
         coap_message_util:build_option(?CONTENT_FORMAT, ?APPLICATION_OCTET_STREAM)
@@ -151,7 +167,7 @@ response_auto_observe_19_0_0(ObserverIndex, MessageID, Token)->
         payload = ?NO_PAYLOAD
     }.
 
-response_auto_observe_3_0(ObserverIndex, MessageID, Token)->
+response_auto_observe_3_0(ObserverIndex, MessageID, Token) ->
     Options = [
         coap_message_util:build_option(?URI_OBSERVE, <<ObserverIndex:8>>),
         coap_message_util:build_option(?CONTENT_FORMAT, ?APPLICATION_VNDOMALWM2M_TLV)
