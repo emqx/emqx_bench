@@ -30,13 +30,6 @@
     body        ::      binary() | ?NO_PAYLOAD | json | tlv
 }).
 
-%%-record(coap_response,{
-%%    method ,            %% #method{}
-%%    path        ::      binary(),
-%%    param  ,            %% map
-%%    body        ::      binary() | ?NO_PAYLOAD | json | tlv
-%%}).
-
 -record(method,
 {
     name        ::      atom(),
