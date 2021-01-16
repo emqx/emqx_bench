@@ -18,21 +18,20 @@
 
 -export([working/3]).
 
--export([aep_register/1, aep_publish/3]).
+-export([aep_register/3, aep_publish/3]).
 
 -define(SERVER, ?MODULE).
 
 -record(coap_state, {
-    socket                      :: reference(),
-    host                        :: binary() | tuple,
-    port                        :: integer(),
+    socket                              :: gen_udp:socket(),
+    host                                :: binary() | tuple | inet:ip_address(),
+    port                                :: integer(),
     %% ct iot aep state
-    register                    :: unfinished | finished,
-    observe_1900                :: unfinished | finished,
-    uri_observe_index = 0       :: integer(),
-    imei                        :: binary(),
-    message_id_index            :: integer(),
-    token_19_0_0 = un_defined   :: un_defined | binary()
+    register                            :: unfinished | finished,
+    observe_1900                        :: unfinished | finished,
+    uri_observe_index   = 0             :: integer(),
+    message_id_index                    :: integer(),
+    token_19_0_0        = un_defined    :: un_defined | binary()
 }).
 
 start_link(Host, Port) ->
@@ -50,21 +49,21 @@ working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
     NewState = fresh_coap_state(State, CoAPMessageTrans),
     io:format("Receive coap message:~p~n",[CoAPMessageTrans]),
     handle_message(NewState, {ReqOrResp, CoAPMessageTrans});
-%% ct iot aep action
-working(aep, register, #coap_state{imei = IMEI}=State)->
-    CoAPMessage = lwm2m_message_tool:message_register(IMEI),
+
+working(aep, {register, IMEI, RegisterPayload}, State)->
+    CoAPMessage = lwm2m_message_util:message_register(IMEI, RegisterPayload),
     {next_state, working, send(State, CoAPMessage)};
 working(aep, {publish, pass_through, Payload},
-    #coap_state{uri_observe_index = ObserverIndex, message_id_index = MessageID, token_19_0_0 = Token}=State)->
-    CoAPMessage = lwm2m_message_tool:message_publish_pass_through(MessageID, ObserverIndex, Token, Payload),
+    #coap_state{uri_observe_index = ObserverIndex, message_id_index = MessageID, token_19_0_0 = Token} = State)->
+    CoAPMessage = lwm2m_message_util:message_publish_pass_through(MessageID, ObserverIndex, Token, Payload),
     {next_state, working, send(State, CoAPMessage)};
 working(aep, {publish, binary, DatasetID, Payload},
-    #coap_state{uri_observe_index = ObserverIndex,message_id_index = MessageID,token_19_0_0 = Token}=State)->
-    CoAPMessage = lwm2m_message_tool:message_publish_binary(ObserverIndex, MessageID, Token, DatasetID, Payload),
+    #coap_state{uri_observe_index = ObserverIndex,message_id_index = MessageID,token_19_0_0 = Token} = State)->
+    CoAPMessage = lwm2m_message_util:message_publish_binary(ObserverIndex, MessageID, Token, DatasetID, Payload),
     {next_state, working, send(State, CoAPMessage)};
 working(aep, {publish, json, Payload},
-    #coap_state{uri_observe_index = ObserverIndex,message_id_index = MessageID,token_19_0_0 = Token}=State)->
-    CoAPMessage = lwm2m_message_tool:message_publish_json(ObserverIndex, MessageID, Token, Payload),
+    #coap_state{uri_observe_index = ObserverIndex,message_id_index = MessageID,token_19_0_0 = Token} = State)->
+    CoAPMessage = lwm2m_message_util:message_publish_json(ObserverIndex, MessageID, Token, Payload),
     {next_state, working, send(State, CoAPMessage)}.
 
 
@@ -89,7 +88,7 @@ next_message_id(State, CoAPMessageOrCoAPTrans)
     when is_record(CoAPMessageOrCoAPTrans, coap_trans) or is_record(CoAPMessageOrCoAPTrans, coap_message) ->
     MessageID = coap_message_util:get_message_id(CoAPMessageOrCoAPTrans),
     next_message_id(State,MessageID);
-next_message_id(State,[MessageID] = MessageIDList) when is_list(MessageIDList)-> next_message_id(State,MessageID);
+next_message_id(State,[MessageID] = MessageIDList) when is_list(MessageIDList)-> next_message_id(State, MessageID);
 next_message_id(State,[] = MessageIDList) when is_list(MessageIDList) -> State;
 next_message_id(State,#coap_message{id = MessageID} = CoAPMessage) when is_record(CoAPMessage, coap_message) ->
     next_message_id(State,MessageID);
@@ -115,10 +114,12 @@ next_uri_observe(State, [] = ObserverIndexList) when is_list(ObserverIndexList) 
 %%--------------------------------------------------------------------------------
 %%  some aep lwm2m function
 %%--------------------------------------------------------------------------------
+-spec aep_register(pid(), binary(), binary()) -> any().
+aep_register(Pid, IMEI, RegisterPayload) ->
+    gen_statem:call(Pid, {aep, {register, IMEI, RegisterPayload}}).
 
-aep_register(Pid) ->
-    gen_statem:call(Pid, {aep, register}).
-aep_publish(Pid, ProductDataType ,PublishData) ->
+-spec aep_publish(pid(), json | binary | pass_through, binary()) -> any().
+aep_publish(Pid, ProductDataType, PublishData) ->
     gen_statem:call(Pid, {aep, {publish, ProductDataType, PublishData}}).
 
 
@@ -128,17 +129,17 @@ handle_message(_State, {response, _CoAPTrans}) ->
 %% request
 handle_message(State, {request, #coap_trans{path = <<"/4/0/8">>} = CoAPTrans}) ->
     {MessageID, Token} = coap_message_util:get_message_id_token(CoAPTrans),
-    CoAPMessage = lwm2m_message_tool:message_response_auto_observe_4_0_8(MessageID, Token),
+    CoAPMessage = lwm2m_message_util:message_response_auto_observe_4_0_8(MessageID, Token),
     {next_state, working, send(State, CoAPMessage)};
 handle_message(#coap_state{uri_observe_index = ObserverIndex}= State,
     {request, #coap_trans{path = <<"/3/0">>} = CoAPTrans}) ->
     {MessageID, Token} = coap_message_util:get_message_id_token(CoAPTrans),
-    CoAPMessage = lwm2m_message_tool:message_response_auto_observe_3_0(ObserverIndex + 1, MessageID, Token),
+    CoAPMessage = lwm2m_message_util:message_response_auto_observe_3_0(ObserverIndex + 1, MessageID, Token),
     {next_state, working, send(State, CoAPMessage)};
 handle_message(#coap_state{uri_observe_index = ObserverIndex} = State,
     {request, #coap_trans{path = <<"/19/0/0">>} = CoAPTrans}) ->
     {MessageID, Token} = coap_message_util:get_message_id_token(CoAPTrans),
-    CoAPMessage = lwm2m_message_tool:message_response_auto_observe_19_0_0(ObserverIndex, MessageID, Token),
+    CoAPMessage = lwm2m_message_util:message_response_auto_observe_19_0_0(ObserverIndex, MessageID, Token),
     {next_state, working, send(State#coap_state{token_19_0_0 = Token}, CoAPMessage)};
 
 handle_message(_State, {request, _CoAPTrans}) ->

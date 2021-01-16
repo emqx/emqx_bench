@@ -12,7 +12,7 @@
 {
     test_id             :: atom(),
     protocol            :: atom(),
-    simulator_info      :: #simulator_info{},
+    simulator_info      ,  %% #simulator_info{}
     task_list           :: list()
 }
 ).
@@ -35,5 +35,5 @@
 {
     status              :: success | fail,
     reason              :: any(),
-    count_ref           :: ref()
+    count_ref              %% count ref
 }).
