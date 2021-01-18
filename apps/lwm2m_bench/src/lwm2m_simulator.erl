@@ -12,13 +12,13 @@
 -behaviour(gen_statem).
 -include("coap.hrl").
 -include("emqx_lw_tlv.hrl").
--export([start_link/2]).
+-export([start_link/3]).
 
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
 -export([working/3]).
 
--export([aep_register/3, aep_publish/3]).
+-export([aep_register/2, aep_publish/3]).
 
 -define(SERVER, ?MODULE).
 
@@ -27,6 +27,7 @@
     host                                :: binary() | tuple | inet:ip_address(),
     port                                :: integer(),
     %% ct iot aep state
+    imei                                :: binary(),
     register                            :: unfinished | finished,
     observe_1900                        :: unfinished | finished,
     uri_observe_index   = 0             :: integer(),
@@ -34,12 +35,12 @@
     token_19_0_0        = un_defined    :: un_defined | binary()
 }).
 
-start_link(Host, Port) ->
-    gen_statem:start_link({local, ?MODULE}, ?MODULE, [Host, Port], []).
+start_link(IMEI, Host, Port) ->
+    gen_statem:start_link({local, ?MODULE}, ?MODULE, [IMEI, Host, Port], []).
 
-init([Host, Port]) ->
+init([IMEI, Host, Port]) ->
     {ok, Socket} = gen_udp:open(0, [binary]),
-    {ok, working, #coap_state{socket = Socket, host = Host, port = Port}}.
+    {ok, working, #coap_state{imei = IMEI, socket = Socket, host = Host, port = Port}}.
 
 callback_mode() ->
     state_functions.
@@ -49,9 +50,14 @@ working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
     NewState = fresh_coap_state(State, CoAPMessageTrans),
     io:format("Receive coap message:~p~n",[CoAPMessageTrans]),
     handle_message(NewState, {ReqOrResp, CoAPMessageTrans});
-
-working(aep, {register, IMEI, RegisterPayload}, State)->
+working(aep, {register, RegisterPayload}, #coap_state{imei = IMEI} = State)->
     CoAPMessage = lwm2m_message_util:message_register(IMEI, RegisterPayload),
+    {next_state, working, send(State, CoAPMessage)};
+working(aep, {fresh_register}, #coap_state{imei = IMEI,message_id_index = MessageID} = State)->
+    CoAPMessage = lwm2m_message_util:message_fresh_register(IMEI, MessageID),
+    {next_state, working, send(State, CoAPMessage)};
+working(aep, {deregister}, #coap_state{imei = IMEI, message_id_index = MessageID} = State)->
+    CoAPMessage = lwm2m_message_util:message_deregister(IMEI, MessageID),
     {next_state, working, send(State, CoAPMessage)};
 working(aep, {publish, pass_through, Payload},
     #coap_state{uri_observe_index = ObserverIndex, message_id_index = MessageID, token_19_0_0 = Token} = State)->
@@ -114,9 +120,9 @@ next_uri_observe(State, [] = ObserverIndexList) when is_list(ObserverIndexList) 
 %%--------------------------------------------------------------------------------
 %%  some aep lwm2m function
 %%--------------------------------------------------------------------------------
--spec aep_register(pid(), binary(), binary()) -> any().
-aep_register(Pid, IMEI, RegisterPayload) ->
-    gen_statem:call(Pid, {aep, {register, IMEI, RegisterPayload}}).
+-spec aep_register(pid(), binary()) -> any().
+aep_register(Pid, RegisterPayload) ->
+    gen_statem:call(Pid, {aep, {register, RegisterPayload}}).
 
 -spec aep_publish(pid(), json | binary | pass_through, binary()) -> any().
 aep_publish(Pid, ProductDataType, PublishData) ->

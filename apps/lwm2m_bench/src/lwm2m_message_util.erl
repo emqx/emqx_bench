@@ -50,7 +50,7 @@ message_register(IMEI, Payload) ->
         payload = Payload
     }.
 
-message_fresh_register(IMEI,MessageID) ->
+message_fresh_register(IMEI, MessageID) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_PATH,  IMEI),
@@ -66,7 +66,7 @@ message_fresh_register(IMEI,MessageID) ->
         payload = ?NO_PAYLOAD
     }.
 
-message_deregister(IMEI,MessageID)->
+message_deregister(IMEI, MessageID)->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_PATH,  IMEI)
