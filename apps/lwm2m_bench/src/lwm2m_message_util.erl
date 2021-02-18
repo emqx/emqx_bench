@@ -11,19 +11,16 @@
 -include("coap.hrl").
 -include("emqx_lw_tlv.hrl").
 %% message_function(any()) -> #coap_messahe{}
--export([
-    message_register/2,
-    message_fresh_register/2,
-    message_deregister/2]).
--export([
-    message_response_auto_observe_4_0_8/2,
-    message_response_auto_observe_3_0/3,
-    message_response_auto_observe_19_0_0/3]).
--export([message_publish/5]).
--export([
-    message_response_command_ack/2,
-    message_response_command_binary/5,
-    message_response_command_json/4]).
+-export([message_register/2,
+        message_fresh_register/2,
+        message_deregister/2]).
+-export([message_response_auto_observe_4_0_8/2,
+        message_response_auto_observe_3_0/2,
+        message_response_auto_observe_19_0_0/2]).
+-export([message_publish/4]).
+-export([message_response_command_ack/2,
+        message_response_command_binary/4,
+        message_response_command_json/3]).
 
 %%-----------------------------------------------------------------
 %% message build function
@@ -90,9 +87,9 @@ message_response_auto_observe_4_0_8(MessageID, Token) ->
         options = Options,
         payload = ?NO_PAYLOAD
     }.
-message_response_auto_observe_19_0_0(ObserverIndex, MessageID, Token) ->
+message_response_auto_observe_19_0_0(MessageID, Token) ->
     Options = [
-        coap_message_util:build_option(?URI_OBSERVE, <<ObserverIndex:8>>),
+        coap_message_util:build_option(?URI_OBSERVE, <<0:8>>),
         coap_message_util:build_option(?CONTENT_FORMAT, ?APPLICATION_OCTET_STREAM)
     ],
     #coap_message{
@@ -104,9 +101,9 @@ message_response_auto_observe_19_0_0(ObserverIndex, MessageID, Token) ->
         payload = ?NO_PAYLOAD
     }.
 
-message_response_auto_observe_3_0(ObserverIndex, MessageID, Token) ->
+message_response_auto_observe_3_0(MessageID, Token) ->
     Options = [
-        coap_message_util:build_option(?URI_OBSERVE, <<ObserverIndex:8>>),
+        coap_message_util:build_option(?URI_OBSERVE, <<0:8>>),
         coap_message_util:build_option(?CONTENT_FORMAT, ?APPLICATION_VNDOMALWM2M_TLV)
     ],
     TLVList = [
@@ -140,14 +137,14 @@ message_response_auto_observe_3_0(ObserverIndex, MessageID, Token) ->
         options = Options,
         payload = Payload
     }.
-message_publish(ProductDataType, MessageID, Token, ObserverIndex, Payload)->
+message_publish(ProductDataType, MessageID, Token, Payload)->
     ContentForMate = case ProductDataType of
-                         json            -> ?APPLICATION_VNDOMALWM2M_JSON;
-                         binary          -> ?APPLICATION_OCTET_STREAM;
-                         pass_through    -> ?APPLICATION_OCTET_STREAM
-                     end,
+        json            -> ?APPLICATION_VNDOMALWM2M_JSON;
+        binary          -> ?APPLICATION_OCTET_STREAM;
+        pass_through    -> ?APPLICATION_OCTET_STREAM
+    end,
     Options = [
-        coap_message_util:build_option(?URI_OBSERVE, <<ObserverIndex:8>>),
+        coap_message_util:build_option(?URI_OBSERVE, <<0:8>>),
         coap_message_util:build_option(?URI_PATH, <<"19">>),
         coap_message_util:build_option(?URI_PATH, <<"0">>),
         coap_message_util:build_option(?URI_PATH, <<"0">>),
@@ -171,14 +168,14 @@ message_response_command_ack(MessageID, Token)->
         options = [],
         payload = ?NO_PAYLOAD
     }.
-message_response_command_binary(MessageID, Token, ObserverIndex, DatasetID, Payload)->
+message_response_command_binary(MessageID, Token, DatasetID, Payload)->
     BuildPayload = <<16#86:2, DatasetID:2, (size(Payload)):2, Payload/binary>>,
-    message_response_command(MessageID, Token, ObserverIndex, BuildPayload).
-message_response_command_json(MessageID, Token, ObserverIndex, Payload)->
-    message_response_command(MessageID, Token, ObserverIndex, Payload).
-message_response_command(MessageID, Token, ObserverIndex, Payload)->
+    message_response_command(MessageID, Token, BuildPayload).
+message_response_command_json(MessageID, Token, Payload)->
+    message_response_command(MessageID, Token, Payload).
+message_response_command(MessageID, Token, Payload)->
     Options = [
-        coap_message_util:build_option(?URI_OBSERVE, <<ObserverIndex:8>>),
+        coap_message_util:build_option(?URI_OBSERVE, <<0:8>>),
         coap_message_util:build_option(?URI_PATH, <<"19">>),
         coap_message_util:build_option(?URI_PATH, <<"0">>),
         coap_message_util:build_option(?URI_PATH, <<"0">>)

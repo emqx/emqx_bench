@@ -26,9 +26,7 @@
     host                                :: binary() | tuple | inet:ip_address(),
     port                                :: integer(),
     imei                                :: binary(),
-    register                            :: unfinished | finished,
     observe_1900                        :: unfinished | finished,
-    uri_observe_index   = 0             :: integer(),
     message_id_index    = 0             :: integer(),
     token_19_0_0        = un_defined    :: un_defined | binary()
 }).
@@ -67,8 +65,8 @@ execute({fresh_register}, #coap_state{imei = IMEI, message_id_index = MessageID}
 execute({de_register}, #coap_state{imei = IMEI, message_id_index = MessageID} = State) ->
     send(lwm2m_message_util:message_deregister(IMEI, MessageID), State);
 execute({publish, ProductDataType, Payload},
-    #coap_state{message_id_index = MessageID, uri_observe_index = ObserverIndex, token_19_0_0 = Token} = State) ->
-    send(lwm2m_message_util:message_publish(ProductDataType, MessageID, Token, ObserverIndex, Payload), State).
+    #coap_state{message_id_index = MessageID, token_19_0_0 = Token} = State) ->
+    send(lwm2m_message_util:message_publish(ProductDataType, MessageID, Token, Payload), State).
 
 
 -spec register(pid()) -> any().
@@ -96,8 +94,7 @@ publish(Pid, ProductDataType, PublishData) ->
 %%  fresh message ,then fresh uri observe (if have)
 %%--------------------------------------------------------------------------------
 fresh_coap_state(CoAPMessage, State) ->
-    NewState = next_message_id(CoAPMessage, State),
-    next_uri_observe(CoAPMessage, NewState).
+    NewState = next_message_id(CoAPMessage, State).
 %%--------------------------------------------------------------------------------
 %%  fresh message ID
 %%  new message id >= now ,use new message id +1
@@ -108,19 +105,6 @@ next_message_id(#coap_message{id = MessageID} = CoAPMessage, State) when is_reco
 next_message_id(MessageID, #coap_state{message_id_index = IndexNow} = State) when IndexNow >= MessageID ->
     State#coap_state{message_id_index = IndexNow + 1};
 next_message_id(MessageID, State) -> State#coap_state{message_id_index = MessageID + 1}.
-%%--------------------------------------------------------------------------------
-%%  fresh uri observe index
-%%--------------------------------------------------------------------------------
-next_uri_observe(CoAPMessage, State) when is_record(CoAPMessage, coap_message) ->
-    ObserverIndex = coap_message_util:get_param(CoAPMessage, uri_observe, integer),
-    %% coap_message_util:get_param/3 return type is list()
-    next_uri_observe(ObserverIndex, State);
-next_uri_observe([ObserverIndex] = ObserverIndexList, State) when is_list(ObserverIndexList) ->
-    next_uri_observe(ObserverIndex, State);
-next_uri_observe(ObserverIndex, State) when is_integer(ObserverIndex) ->
-    State#coap_state{uri_observe_index = ObserverIndex + 1};
-%% if no uri observe
-next_uri_observe([] = ObserverIndexList, State) when is_list(ObserverIndexList) -> State.
 
 %%--------------------------------------------------------------------------------
 %%  handle message
@@ -149,14 +133,14 @@ handle_non(#coap_message{} = _CoapMessage, _State) ->
 handle_reset(#coap_message{} = _CoapMessage, _State) ->
     keep_state_and_data.
 
-handle_get(#coap_message{id = MessageID, token = Token} = CoapMessage, #coap_state{uri_observe_index = UriObserveIndex} = State) ->
+handle_get(#coap_message{id = MessageID, token = Token} = CoapMessage, #coap_state{} = State) ->
     Path = coap_message_util:get_uri_path(CoapMessage),
     case Path of
         <<"/3/0">> ->
             {keep_state, send(lwm2m_message_util:message_response_auto_observe_4_0_8(MessageID, Token), State)};
         <<"/19/0/0">> ->
             {keep_state,
-                send(lwm2m_message_util:message_response_auto_observe_19_0_0(UriObserveIndex, MessageID, Token), State#coap_state{token_19_0_0 = Token})};
+                send(lwm2m_message_util:message_response_auto_observe_19_0_0(MessageID, Token), State#coap_state{token_19_0_0 = Token})};
         <<"/4/0/8">> ->
             {keep_state, send(lwm2m_message_util:message_response_auto_observe_4_0_8(MessageID, Token), State)};
         _ -> keep_state_and_data
