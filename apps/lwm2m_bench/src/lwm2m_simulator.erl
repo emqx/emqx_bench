@@ -11,12 +11,11 @@
 
 -behaviour(gen_statem).
 -include("coap.hrl").
--include("emqx_lw_tlv.hrl").
 
 -export([start_link/3]).
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
--export([working/3]).
+-export([working/3, wait_response/3]).
 -export([register/1, register/2, de_register/1, fresh_register/1, publish/3]).
 
 -define(SERVER, ?MODULE).
@@ -26,6 +25,7 @@
     host                                :: binary() | tuple | inet:ip_address(),
     port                                :: integer(),
     imei                                :: binary(),
+    register                            :: unfinished | finished,
     observe_1900                        :: unfinished | finished,
     message_id_index    = 0             :: integer(),
     token_19_0_0        = un_defined    :: un_defined | binary()
@@ -52,6 +52,14 @@ working({call, From}, Command, State) ->
     {keep_state, execute(Command, State), {reply, From, ok}};
 working(Any, Data, State) ->
     io:format("====> event type ~p~n, Data ~p~n,State ~p~n ", [Any, Data, State]),
+    keep_state_and_data.
+
+wait_response(info, {udp, Sock, PeerIP, PeerPortNo, Packet}, State)->
+    working(info, {udp, Sock, PeerIP, PeerPortNo, Packet}, State);
+wait_response({call, From}, _Command, _State) ->
+    {keep_data_and_state, {reply, From, waiting_response}};
+wait_response(Any, Data, State) ->
+    io:format("wait message, event type ~p~n, Data ~p~n,State ~p~n ", [Any, Data, State]),
     keep_state_and_data.
 
 terminate(_Reason, _StateName, _State = #coap_state{}) -> ok.
@@ -94,7 +102,7 @@ publish(Pid, ProductDataType, PublishData) ->
 %%  fresh message ,then fresh uri observe (if have)
 %%--------------------------------------------------------------------------------
 fresh_coap_state(CoAPMessage, State) ->
-    NewState = next_message_id(CoAPMessage, State).
+    next_message_id(CoAPMessage, State).
 %%--------------------------------------------------------------------------------
 %%  fresh message ID
 %%  new message id >= now ,use new message id +1
@@ -154,6 +162,8 @@ handle_delete(#coap_message{} = _CoapMessage, _State) ->
 %%--------------------------------------------------------------------------------
 %%  some lwm2m function over
 %%--------------------------------------------------------------------------------
+send_request(CoAPMessage, State)->
+    {next_state, wait_response, send(CoAPMessage, State)}.
 
 %%--------------------------------------------------------------------------------
 %%  udp api

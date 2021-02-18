@@ -9,7 +9,7 @@
 -module(lwm2m_message_util).
 -author("DDDHuang").
 -include("coap.hrl").
--include("emqx_lw_tlv.hrl").
+-include("tlv.hrl").
 %% message_function(any()) -> #coap_messahe{}
 -export([message_register/2,
         message_fresh_register/2,
@@ -112,18 +112,18 @@ message_response_auto_observe_3_0(MessageID, Token) ->
         #tlv{type = ?VALUE, identifier = 16#2, value = <<"20210107">>},
         #tlv{type = ?VALUE, identifier = 16#3, value = <<"1.0">>},
         #tlv{type = ?MULTIPLE, identifier = 16#6, value = [
-            #tlv{type = ?RESOURCE,identifier = 16#0,value = binary:encode_unsigned(16#1)},
-            #tlv{type = ?RESOURCE,identifier = 16#1,value = binary:encode_unsigned(16#5)}]},
+            #tlv{type = ?RESOURCE, identifier = 16#0, value = binary:encode_unsigned(16#1)},
+            #tlv{type = ?RESOURCE, identifier = 16#1, value = binary:encode_unsigned(16#5)}]},
         #tlv{type = ?MULTIPLE, identifier = 16#7, value = [
-            #tlv{type = ?RESOURCE,identifier = 16#0,value = binary:encode_unsigned(16#0ED8)},
-            #tlv{type = ?RESOURCE,identifier = 16#1,value = binary:encode_unsigned(16#1388)}]},
+            #tlv{type = ?RESOURCE, identifier = 16#0, value = binary:encode_unsigned(16#0ED8)},
+            #tlv{type = ?RESOURCE, identifier = 16#1, value = binary:encode_unsigned(16#1388)}]},
         #tlv{type = ?MULTIPLE, identifier = 16#8, value = [
-            #tlv{type = ?RESOURCE,identifier = 16#0,value = binary:encode_unsigned(16#7D)},
-            #tlv{type = ?RESOURCE,identifier = 16#1,value = binary:encode_unsigned(16#0384)}]},
+            #tlv{type = ?RESOURCE, identifier = 16#0, value = binary:encode_unsigned(16#7D)},
+            #tlv{type = ?RESOURCE, identifier = 16#1, value = binary:encode_unsigned(16#0384)}]},
         #tlv{type = ?VALUE, identifier = 16#9, value = binary:encode_unsigned(16#64)},
         #tlv{type = ?VALUE, identifier = 16#0A, value = binary:encode_unsigned(16#0F)},
         #tlv{type = ?MULTIPLE, identifier = 16#0B, value = [
-            #tlv{type = ?RESOURCE,identifier = 16#0,value = binary:encode_unsigned(16#0)}]},
+            #tlv{type = ?RESOURCE, identifier = 16#0, value = binary:encode_unsigned(16#0)}]},
         #tlv{type = ?VALUE, identifier = 16#0D, value = binary:encode_unsigned(16#5182428F)},
         #tlv{type = ?VALUE, identifier = 16#0E, value = <<"+08:00">>},
         #tlv{type = ?VALUE, identifier = 16#10, value = <<"U">>}
