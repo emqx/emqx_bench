@@ -66,15 +66,15 @@ terminate(_Reason, _StateName, _State = #coap_state{}) -> ok.
 code_change(_OldVsn, StateName, State = #coap_state{}, _Extra) -> {ok, StateName, State}.
 
 %% RegisterPayload should be like <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>
-execute({register, RegisterPayload}, #coap_state{imei = IMEI} = State) ->
-    send(lwm2m_message_util:message_register(IMEI, RegisterPayload), State);
+execute({register, RegisterPayload}, #coap_state{message_id_index = MessageID, imei = IMEI} = State) ->
+    send(lwm2m_message_util:register(MessageID, IMEI, RegisterPayload), State);
 execute({fresh_register}, #coap_state{imei = IMEI, message_id_index = MessageID} = State) ->
-    send(lwm2m_message_util:message_fresh_register(IMEI, MessageID), State);
+    send(lwm2m_message_util:fresh_register(IMEI, MessageID), State);
 execute({de_register}, #coap_state{imei = IMEI, message_id_index = MessageID} = State) ->
-    send(lwm2m_message_util:message_deregister(IMEI, MessageID), State);
+    send(lwm2m_message_util:deregister(IMEI, MessageID), State);
 execute({publish, ProductDataType, Payload},
     #coap_state{message_id_index = MessageID, token_19_0_0 = Token} = State) ->
-    send(lwm2m_message_util:message_publish(ProductDataType, MessageID, Token, Payload), State).
+    send(lwm2m_message_util:publish(ProductDataType, MessageID, Token, Payload), State).
 
 
 -spec register(pid()) -> any().
@@ -145,12 +145,12 @@ handle_get(#coap_message{id = MessageID, token = Token} = CoapMessage, #coap_sta
     Path = coap_message_util:get_uri_path(CoapMessage),
     case Path of
         <<"/3/0">> ->
-            {keep_state, send(lwm2m_message_util:message_response_auto_observe_4_0_8(MessageID, Token), State)};
+            {keep_state, send(lwm2m_message_util:response_auto_observe_3_0(MessageID, Token), State)};
         <<"/19/0/0">> ->
             {keep_state,
-                send(lwm2m_message_util:message_response_auto_observe_19_0_0(MessageID, Token), State#coap_state{token_19_0_0 = Token})};
+                send(lwm2m_message_util:response_auto_observe_19_0_0(MessageID, Token), State#coap_state{token_19_0_0 = Token})};
         <<"/4/0/8">> ->
-            {keep_state, send(lwm2m_message_util:message_response_auto_observe_4_0_8(MessageID, Token), State)};
+            {keep_state, send(lwm2m_message_util:response_auto_observe_4_0_8(MessageID, Token), State)};
         _ -> keep_state_and_data
     end.
 handle_post(#coap_message{} = _CoapMessage, _State) ->
