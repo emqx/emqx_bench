@@ -1,0 +1,3 @@
+-define(PASS_THROUGH,"1.0").
+-define(NO_PASS_THROUGH,"1.1").
+-define(STANDARD_MODULE,"2.0").

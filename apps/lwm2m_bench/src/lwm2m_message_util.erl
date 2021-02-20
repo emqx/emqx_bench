@@ -15,7 +15,7 @@
             bootstrap_sm9/3]).
 
 -export([   register/3,
-            register_static_module/3,
+            register_standard_module/3,
             fresh_register/2,
             deregister/2]).
 
@@ -78,9 +78,9 @@ register(MessageID, IMEI, Payload) ->
         options = Options,
         payload = Payload
     }.
-register_static_module(MessageID, IMEI, default) ->
-    register_static_module(MessageID,IMEI, <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>);
-register_static_module(MessageID, IMEI, Payload) ->
+register_standard_module(MessageID, IMEI, default) ->
+    register_standard_module(MessageID,IMEI, <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>);
+register_standard_module(MessageID, IMEI, Payload) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_QUERY, <<"lwm2m=1.0">>),

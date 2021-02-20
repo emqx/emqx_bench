@@ -40,6 +40,7 @@ start_link(IMEI, Host, Port) ->
 
 init([IMEI, Host, Port]) ->
     {ok, Socket} = gen_udp:open(0, [binary]),
+%%   {ok, Sock} = gen_udp:open(0, [{ip, {192,168,1,120}}, binary, {active, false}, {reuseaddr, false}]),
     {ok, working, #coap_state{imei = IMEI, socket = Socket, host = Host, port = Port}}.
 
 callback_mode() ->
@@ -80,7 +81,8 @@ wait_response(Any, Data, State) ->
     io:format("wait message, event type ~p~n, Data ~p~n,State ~p~n ", [Any, Data, State]),
     keep_state_and_data.
 
-terminate(_Reason, _StateName, _State = #coap_state{}) -> ok.
+terminate(_Reason, _StateName, _State = #coap_state{socket = Socket}) ->
+    gen_udp:close(Socket).
 code_change(_OldVsn, StateName, State = #coap_state{}, _Extra) -> {ok, StateName, State}.
 
 %%--------------------------------------------------------------------------------
@@ -97,14 +99,14 @@ execute({register, RegisterPayload}, #coap_state{message_id_index = MessageID, i
               end,
     CoAPMessage = lwm2m_message_util:register(MessageID, IMEI, RegisterPayload),
     send_request(?ACK_OR_DIE, CoAPMessage, add_sampler_arg(State, Sampler, MessageID));
-execute({register_static_module, RegisterPayload}, #coap_state{message_id_index = MessageID, imei = IMEI} = State) ->
+execute({register_standard_module, RegisterPayload}, #coap_state{message_id_index = MessageID, imei = IMEI} = State) ->
     %% RegisterPayload should be like <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>
     Sampler = fun
                   (#coap_message{type = ?ACK, method = ?CREATED, id = AckMessageID}, AckMessageID) -> ok;
                   (#coap_message{type = ?ACK, method = Method,   id = AckMessageID}, AckMessageID) -> {error, Method};
                   (_CoAPMessage, _MessageID) -> ignore
               end,
-    CoAPMessage = lwm2m_message_util:register_static_module(MessageID, IMEI, RegisterPayload),
+    CoAPMessage = lwm2m_message_util:register_standard_module(MessageID, IMEI, RegisterPayload),
     send_request(?ACK_OR_DIE, CoAPMessage, add_sampler_arg(State, Sampler, MessageID));
 execute({fresh_register}, #coap_state{imei = IMEI, message_id_index = MessageID} = State) ->
     Sampler = fun
