@@ -1,6 +1,9 @@
 -define( DEFAULT_COAP_PORT  , 5683  ).
 -define( DEFAULT_COAPS_PORT , 5684  ).
 
+-define( ACK_TIMEOUT        , 2000).
+-define( MAX_RETRANSMIT     , 4).
+
 -define( MAX_BLOCK_SIZE     , 1024  ).
 -define( DEFAULT_MAX_AGE    , 60    ).
 
