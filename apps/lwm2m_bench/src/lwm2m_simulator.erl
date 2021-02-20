@@ -61,11 +61,12 @@ working(Any, Data, State) ->
 %% RequestStyle :: ack_or_die | simple_con
 %% ack_or_die -> timeout -> shutdown
 %% simple_con -> timeout -> ignore
-wait_response(state_timeout, {RequestStyle, AckTimeout, LastTimes, CoAPMessage}, State) when LastTimes > 0 ->
-    {keep_state, send(CoAPMessage, State), [{state_timeout, AckTimeout, {RequestStyle, AckTimeout, LastTimes - 1, CoAPMessage}}]};
-wait_response(state_timeout, {?ACK_OR_DIE, _AckTimeout, LastTimes, CoAPMessage}, State) when LastTimes =:= 0 ->
+wait_response(state_timeout, {RequestStyle, AckTimeout, LastTimes, CoAPMessage}, State) when LastTimes > 1 ->
+    {keep_state, send(CoAPMessage, State),
+        [{state_timeout, AckTimeout, {RequestStyle, AckTimeout * (?MAX_RETRANSMIT - LastTimes + 1), LastTimes - 1, CoAPMessage}}]};
+wait_response(state_timeout, {?ACK_OR_DIE, _AckTimeout, LastTimes, CoAPMessage}, State) when LastTimes =:= 1 ->
     {stop, {shutdown, {ack_time_out, CoAPMessage}}, State};
-wait_response(state_timeout, {?SIMPLE_CON, _AckTimeout, LastTimes, _CoAPMessage}, _State) when LastTimes =:= 0 ->
+wait_response(state_timeout, {?SIMPLE_CON, _AckTimeout, LastTimes, _CoAPMessage}, _State) when LastTimes =:= 1 ->
     keep_state_and_data;
 wait_response(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, #coap_state{sampler = Sampler,sampler_arg = SamplerArg} = State)->
     CoAPMessage = coap_message_util:decode(Packet),
@@ -94,7 +95,6 @@ execute({register, RegisterPayload}, #coap_state{message_id_index = MessageID, i
                   (#coap_message{type = ?ACK, method = Method,   id = AckMessageID}, AckMessageID) -> {fail, Method};
                   (_CoAPMessage, _MessageID) -> ignore
               end,
-    io:format("login ---> ~n"),
     CoAPMessage = lwm2m_message_util:register(MessageID, IMEI, RegisterPayload),
     send_request(?ACK_OR_DIE, CoAPMessage, add_sampler_arg(State, Sampler, MessageID));
 execute({register_static_module, RegisterPayload}, #coap_state{message_id_index = MessageID, imei = IMEI} = State) ->
@@ -126,7 +126,7 @@ execute({publish, ProductDataType, Payload},
     #coap_state{message_id_index = MessageID, token_19_0_0 = Token} = State) ->
     Sampler = fun
                   (#coap_message{type = ?ACK, id = AckMessageID}, AckMessageID) -> ok;
-                  (#coap_message{type = ?ACK, method = Method,   id = AckMessageID}, AckMessageID) -> {error, Method};
+                  (#coap_message{type = ?ACK, method = Method, id = AckMessageID}, AckMessageID) -> {error, Method};
                   (_CoAPMessage, _MessageID) -> ignore
               end,
     CoAPMessage = lwm2m_message_util:publish(ProductDataType, MessageID, Token, Payload),
