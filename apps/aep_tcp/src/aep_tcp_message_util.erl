@@ -11,13 +11,20 @@
 -include("aep_tcp.hrl").
 
 %% API
--export([]).
+-export([register_message/3,register_message_standard_module/3]).
+
+-export([heart_beat/0]).
+
+-export([publish/1,publish/3]).
+
+-export([command_response/2,command_response/3]).
 
 register_message(DeviceID, Password, Version) ->
     DeviceIDLen = length(DeviceID),
     PasswordLen = length(Password),
     VersionLen  = length(Version),
     <<?MESSAGE_TYPE_LOGIN:16, DeviceIDLen:16, DeviceID/binary, PasswordLen:16, Password/binary, VersionLen:16, Version/binary>>.
+
 register_message_standard_module(DeviceID, Password, Version) ->
     DeviceIDLen = length(DeviceID),
     PasswordLen = length(Password),
@@ -44,6 +51,36 @@ register_message_standard_module(DeviceID, Password, Version) ->
             IMSILen:16, IMSI/binary
         >>,
     <<?MESSAGE_TYPE_LOGIN:16, DeviceIDLen:16, DeviceID/binary, PasswordLen:16, Password/binary, VersionLen:16, Version/binary, StandardModuleInfo/binary>>.
+
+heart_beat() ->
+    <<?MESSAGE_TYPE_HEART_BEAT:16>>.
+
+-spec publish(binary()) -> binary().
+publish(Data) ->
+    DataLen = length(Data),
+    <<?MESSAGE_TYPE_UP:16, DataLen:16, Data/binary>>.
+
+-spec publish(integer(), integer(), binary()) -> binary().
+publish(MessageID, DatasetID, Data) ->
+    MessageIDBinary = binary:encode_unsigned(MessageID),
+    MessageIDLen = size(MessageIDBinary),
+    AllDataLen = length(Data) + 2,
+    <<?MESSAGE_TYPE_UP:16, MessageIDLen:16, MessageIDBinary/binary, AllDataLen:16, DatasetID:16, Data/binary>>.
+
+
+%% executed success with dataset id and data
+%% or
+%% success with no dataset id and no data
+%% or
+%% fail with no dataset id and no data
+command_response(TaskID, DatasetID, ResponseData) ->
+    AllResponseData = <<TaskID:2, ?EXECUTE_COMMAND_SUCCESS:16, DatasetID:16, ResponseData/binary>>,
+    AllResponseDataSize = size(AllResponseData),
+    <<?MESSAGE_TYPE_DOWN_ACK:16, AllResponseDataSize:16, AllResponseData/binary>>.
+command_response(TaskID, ExecuteResult) ->
+    AllResponseData = <<TaskID:2, ExecuteResult:16>>,
+    AllResponseDataSize = size(AllResponseData),
+    <<?MESSAGE_TYPE_DOWN_ACK:16, AllResponseDataSize:16, AllResponseData/binary>>.
 
 
 
