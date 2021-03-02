@@ -2,6 +2,8 @@
 -define( NO_PASS_THROUGH , "1.1").
 -define( STANDARD_MODULE , "2.0").
 
+-define(RESPONSE_TIME_OUT               , 500).
+
 -define( MESSAGE_TYPE_ERROR             , 0).
 -define( MESSAGE_TYPE_LOGIN             , 1).
 -define( MESSAGE_TYPE_UP                , 2).

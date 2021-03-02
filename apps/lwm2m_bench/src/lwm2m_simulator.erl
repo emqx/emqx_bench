@@ -12,7 +12,7 @@
 -behaviour(gen_statem).
 -include("coap.hrl").
 
--export([start_link/3]).
+-export([start_link/1]).
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
 -export([working/3, wait_response/3]).
@@ -35,13 +35,22 @@
     token_19_0_0        = un_defined    :: un_defined | binary()
 }).
 
-start_link(IMEI, Host, Port) ->
-    gen_statem:start_link(?MODULE, [IMEI, Host, Port], []).
+start_link(Args) ->
+    gen_statem:start_link(?MODULE, Args, []).
 
-init([IMEI, Host, Port]) ->
-    {ok, Socket} = gen_udp:open(0, [binary]),
+init(Args) ->
+    {ok, working, do_init(Args, #coap_state{})}.
+
+do_init([{imei, IMEI}, Args], State) -> do_init(Args, State#coap_state{imei = IMEI});
+do_init([{host, Host}, Args], State) -> do_init(Args, State#coap_state{host = Host});
+do_init([{port, Port}, Args], State) -> do_init(Args, State#coap_state{port = Port});
+do_init([{_, _}, Args], State)       -> do_init(Args, State);
+do_init([], State) ->
 %%   {ok, Sock} = gen_udp:open(0, [{ip, {192,168,1,120}}, binary, {active, false}, {reuseaddr, false}]),
-    {ok, working, #coap_state{imei = IMEI, socket = Socket, host = Host, port = Port}}.
+    {ok, Socket} = gen_udp:open(0, [binary]),
+    State#coap_state{socket = Socket}.
+
+
 
 callback_mode() ->
     state_functions.
