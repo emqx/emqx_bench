@@ -23,7 +23,8 @@
             response_auto_observe_3_0/2,
             response_auto_observe_19_0_0/2]).
 
--export([   publish/4]).
+-export([   publish/4,
+            publish_binary_payload/2]).
 
 -export([   response_command_ack/2,
             response_command_binary/4,
@@ -33,7 +34,7 @@
 %% message build function
 %%-----------------------------------------------------------------
 
-bootstrap(MessageID, IMEI)->
+bootstrap(MessageID, IMEI) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"bs">>),
         coap_message_util:build_option(?URI_QUERY, <<"ep=", IMEI/binary>>)
@@ -45,7 +46,7 @@ bootstrap(MessageID, IMEI)->
         token   = <<>>,
         options = Options
     }.
-bootstrap_sm9(MessageID, IMEI, PubKey)->
+bootstrap_sm9(MessageID, IMEI, PubKey) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"bs">>),
         coap_message_util:build_option(?URI_QUERY, <<"ktype=2">>),
@@ -60,8 +61,6 @@ bootstrap_sm9(MessageID, IMEI, PubKey)->
         options = Options
     }.
 
-register(MessageID, IMEI, default) ->
-    register(MessageID,IMEI, <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>);
 register(MessageID, IMEI, Payload) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
@@ -78,8 +77,7 @@ register(MessageID, IMEI, Payload) ->
         options = Options,
         payload = Payload
     }.
-register_standard_module(MessageID, IMEI, default) ->
-    register_standard_module(MessageID,IMEI, <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>);
+
 register_standard_module(MessageID, IMEI, Payload) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
@@ -120,7 +118,7 @@ fresh_register(MessageID, IMEI) ->
         payload = ?NO_PAYLOAD
     }.
 
-deregister(MessageID, IMEI)->
+deregister(MessageID, IMEI) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_PATH,  IMEI)
@@ -197,7 +195,12 @@ response_auto_observe_3_0(MessageID, Token) ->
         options = Options,
         payload = Payload
     }.
-publish(ProductDataType, MessageID, Token, Payload)->
+%% binary payload prepare
+publish_binary_payload(DataSetID, Data) ->
+    DataLen = size(Data),
+    Payload = <<16#2:8, DataSetID:16, DataLen:16, Data/binary>>.
+
+publish(ProductDataType, MessageID, Token, Payload) ->
     ContentForMate = case ProductDataType of
         json            -> ?APPLICATION_VNDOMALWM2M_JSON;
         binary          -> ?APPLICATION_OCTET_STREAM;
@@ -219,7 +222,7 @@ publish(ProductDataType, MessageID, Token, Payload)->
         payload = Payload
     }.
 
-response_command_ack(MessageID, Token)->
+response_command_ack(MessageID, Token) ->
     #coap_message{
         type    = ?ACK,
         method  = ?CHANGED,
@@ -228,12 +231,12 @@ response_command_ack(MessageID, Token)->
         options = [],
         payload = ?NO_PAYLOAD
     }.
-response_command_binary(MessageID, Token, DatasetID, Payload)->
+response_command_binary(MessageID, Token, DatasetID, Payload) ->
     BuildPayload = <<16#86:2, DatasetID:2, (size(Payload)):2, Payload/binary>>,
     response_command(MessageID, Token, BuildPayload).
-response_command_json(MessageID, Token, Payload)->
+response_command_json(MessageID, Token, Payload) ->
     response_command(MessageID, Token, Payload).
-response_command(MessageID, Token, Payload)->
+response_command(MessageID, Token, Payload) ->
     Options = [
         coap_message_util:build_option(?URI_OBSERVE, <<0:8>>),
         coap_message_util:build_option(?URI_PATH, <<"19">>),

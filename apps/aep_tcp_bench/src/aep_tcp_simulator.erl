@@ -26,6 +26,7 @@
     port,
     client_id,
     identity,
+    pass_through = false,
     socket ,
     sampler,
     sampler_arg
@@ -47,6 +48,10 @@ do_init([{client_id, ID}, Args], State) ->
     do_init(Args, State#aep_tcp_state{client_id = ID});
 do_init([{identity, Data}, Args], State) ->
     do_init(Args, State#aep_tcp_state{identity = Data});
+do_init([{pass_through, true}, Args], State) ->
+    do_init(Args, State#aep_tcp_state{pass_through = true});
+do_init([{pass_through, _}, Args], State) ->
+    do_init(Args, State#aep_tcp_state{pass_through = false});
 do_init([{port, Port}, Args], State) ->
     do_init(Args, State#aep_tcp_state{port = Port});
 do_init([{_, _}, Args], State) -> do_init(Args, State);

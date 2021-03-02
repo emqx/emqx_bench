@@ -16,7 +16,7 @@
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
 -export([working/3, wait_response/3]).
--export([register/1, register/2, de_register/1, fresh_register/1, publish/3]).
+-export([register/1, de_register/1, update_register/1, publish/2]).
 
 -define(SERVER, ?MODULE).
 
@@ -25,14 +25,15 @@
 
 -record(coap_state, {
     socket                              :: gen_udp:socket(),
-    host                                :: binary() | tuple | inet:ip_address(),
+    host                                :: binary()     | tuple     | inet:ip_address(),
     port                                :: integer(),
     sampler                             :: function(),
     sampler_arg                         :: any(),
     imei                                :: binary(),
-    observe_1900                        :: unfinished | finished,
+    data_type           = json          :: pass_through | json      | binary,
+    register_payload    = <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>,
     message_id_index    = 0             :: integer(),
-    token_19_0_0        = un_defined    :: un_defined | binary()
+    token_19_0_0        = un_defined    :: un_defined   | binary()
 }).
 
 start_link(Args) ->
@@ -41,10 +42,17 @@ start_link(Args) ->
 init(Args) ->
     {ok, working, do_init(Args, #coap_state{})}.
 
-do_init([{imei, IMEI}, Args], State) -> do_init(Args, State#coap_state{imei = IMEI});
-do_init([{host, Host}, Args], State) -> do_init(Args, State#coap_state{host = Host});
-do_init([{port, Port}, Args], State) -> do_init(Args, State#coap_state{port = Port});
-do_init([{_, _}, Args], State)       -> do_init(Args, State);
+do_init([{imei, IMEI} | Args], State) -> do_init(Args, State#coap_state{imei = IMEI});
+do_init([{host, Host} | Args], State) -> do_init(Args, State#coap_state{host = Host});
+do_init([{port, Port} | Args], State) -> do_init(Args, State#coap_state{port = Port});
+do_init([{register_payload, Payload} | Args], State) ->
+    do_init(Args, State#coap_state{register_payload = Payload});
+do_init([{data_type, pass_through} | Args], State) ->
+    do_init(Args, State#coap_state{data_type = pass_through});
+do_init([{data_type, json} | Args], State)   -> do_init(Args, State#coap_state{data_type = json});
+do_init([{data_type, binary} | Args], State) -> do_init(Args, State#coap_state{data_type = binary});
+do_init([{data_type, _} | Args], State) -> do_init(Args, State#coap_state{data_type = pass_through});
+do_init([{_, _} | Args], State) -> do_init(Args, State);
 do_init([], State) ->
 %%   {ok, Sock} = gen_udp:open(0, [{ip, {192,168,1,120}}, binary, {active, false}, {reuseaddr, false}]),
     {ok, Socket} = gen_udp:open(0, [binary]),
@@ -63,6 +71,7 @@ working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
     handle_message(CoAPMessage, NewState);
 
 working(cast, Command, State) ->
+    io:format("receive command ~p~n", [Command]),
     execute(Command, State);
 working(Any, Data, State) ->
     io:format("working，event type ~p~n, Data ~p~n,State ~p~n ", [Any, Data, State]),
@@ -99,8 +108,8 @@ code_change(_OldVsn, StateName, State = #coap_state{}, _Extra) -> {ok, StateName
 %%--------------------------------------------------------------------------------
 add_sampler_arg(State, Sampler, SamplerArgs)->
     State#coap_state{sampler = Sampler,sampler_arg = SamplerArgs}.
-execute({register, RegisterPayload}, #coap_state{message_id_index = MessageID, imei = IMEI} = State) ->
-    %% RegisterPayload should be like <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>
+execute({register},
+    #coap_state{message_id_index = MessageID, imei = IMEI, register_payload = RegisterPayload} = State) ->
     Sampler = fun
                   (#coap_message{type = ?ACK, method = ?CREATED, id = AckMessageID}, AckMessageID) -> ok;
                   (#coap_message{type = ?ACK, method = Method,   id = AckMessageID}, AckMessageID) -> {fail, Method};
@@ -108,8 +117,8 @@ execute({register, RegisterPayload}, #coap_state{message_id_index = MessageID, i
               end,
     CoAPMessage = lwm2m_message_util:register(MessageID, IMEI, RegisterPayload),
     send_request(?ACK_OR_DIE, CoAPMessage, add_sampler_arg(State, Sampler, MessageID));
-execute({register_standard_module, RegisterPayload}, #coap_state{message_id_index = MessageID, imei = IMEI} = State) ->
-    %% RegisterPayload should be like <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>
+execute({register_standard_module},
+    #coap_state{message_id_index = MessageID, imei = IMEI, register_payload = RegisterPayload} = State) ->
     Sampler = fun
                   (#coap_message{type = ?ACK, method = ?CREATED, id = AckMessageID}, AckMessageID) -> ok;
                   (#coap_message{type = ?ACK, method = Method,   id = AckMessageID}, AckMessageID) -> {error, Method};
@@ -117,13 +126,13 @@ execute({register_standard_module, RegisterPayload}, #coap_state{message_id_inde
               end,
     CoAPMessage = lwm2m_message_util:register_standard_module(MessageID, IMEI, RegisterPayload),
     send_request(?ACK_OR_DIE, CoAPMessage, add_sampler_arg(State, Sampler, MessageID));
-execute({fresh_register}, #coap_state{imei = IMEI, message_id_index = MessageID} = State) ->
+execute({update_register}, #coap_state{imei = IMEI, message_id_index = MessageID} = State) ->
     Sampler = fun
                   (#coap_message{type = ?ACK, method = ?CHANGED, id = AckMessageID}, AckMessageID) -> ok;
                   (#coap_message{type = ?ACK, method = Method,   id = AckMessageID}, AckMessageID) -> {error, Method};
                   (_CoAPMessage, _MessageID) -> ignore
               end,
-    CoAPMessage = lwm2m_message_util:fresh_register(MessageID, IMEI),
+    CoAPMessage = lwm2m_message_util:update_register(MessageID, IMEI),
     send_request(?ACK_OR_DIE, CoAPMessage, add_sampler_arg(State, Sampler, MessageID));
 execute({de_register}, #coap_state{imei = IMEI, message_id_index = MessageID} = State) ->
     Sampler = fun
@@ -131,38 +140,35 @@ execute({de_register}, #coap_state{imei = IMEI, message_id_index = MessageID} = 
                   (#coap_message{type = ?ACK, method = Method,   id = AckMessageID}, AckMessageID) -> {error, Method};
                   (_CoAPMessage, _MessageID) -> ignore
               end,
-    CoAPMessage = lwm2m_message_util:fresh_register(MessageID, IMEI),
+    CoAPMessage = lwm2m_message_util:deregister(MessageID, IMEI),
     send_request(?ACK_OR_DIE, CoAPMessage, add_sampler_arg(State, Sampler, MessageID));
-execute({publish, ProductDataType, Payload},
-    #coap_state{message_id_index = MessageID, token_19_0_0 = Token} = State) ->
+execute({publish, Payload},
+    #coap_state{message_id_index = MessageID, token_19_0_0 = Token, data_type = DataType} = State) ->
     Sampler = fun
                   (#coap_message{type = ?ACK, id = AckMessageID}, AckMessageID) -> ok;
                   (#coap_message{type = ?ACK, method = Method, id = AckMessageID}, AckMessageID) -> {error, Method};
                   (_CoAPMessage, _MessageID) -> ignore
               end,
-    CoAPMessage = lwm2m_message_util:publish(ProductDataType, MessageID, Token, Payload),
+    CoAPMessage = lwm2m_message_util:publish(DataType, MessageID, Token, Payload),
     send_request(?SIMPLE_CON,CoAPMessage, add_sampler_arg(State, Sampler, MessageID)).
 
 
 -spec register(pid()) -> any().
 register(Pid) ->
-    gen_statem:cast(Pid, {register, default}).
+    gen_statem:cast(Pid, {register}).
 
--spec register(pid(), binary()) -> any().
-register(Pid, RegisterPayload) ->
-    gen_statem:cast(Pid, {register, RegisterPayload}).
-
--spec fresh_register(pid()) -> any().
-fresh_register(Pid) ->
-    gen_statem:cast(Pid, {fresh_register}).
+-spec update_register(pid()) -> any().
+update_register(Pid) ->
+    gen_statem:cast(Pid, {update_register}).
 
 -spec de_register(pid()) -> any().
 de_register(Pid) ->
     gen_statem:cast(Pid, {de_register}).
+
 %%   binary payload, BuildPayload = <<16#02:2, DatasetID:2, (size(Payload)):2, Payload/binary>>,
--spec publish(pid(), json | binary | pass_through, binary()) -> any().
-publish(Pid, ProductDataType, PublishData) ->
-    gen_statem:cast(Pid, {publish, ProductDataType, PublishData}).
+-spec publish(pid(), binary()) -> any().
+publish(Pid, PublishData) ->
+    gen_statem:cast(Pid, {publish, PublishData}).
 
 %%--------------------------------------------------------------------------------
 %%  fresh message data
