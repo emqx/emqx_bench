@@ -4,7 +4,7 @@
         {registered, []},
         {mod, {emqx_bench_app, []}},
         {applications,
-            [kernel, stdlib, minirest]},
+            [kernel, stdlib]},
         {env, []},
         {modules, []},
         {licenses, ["Apache 2.0"]},
