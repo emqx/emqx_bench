@@ -11,7 +11,7 @@
 
 %% API
 -export([encode/1, decode/1]).
--export([get_param/3, get_uri_path/1]).
+-export([get_option_param/3, get_uri_path/1]).
 
 %%-export([get_message_id_token/1,get_message_id/1, get_token/1]).
 
@@ -22,6 +22,7 @@
 %%------------------------------------------------------------------
 %% encode
 %%------------------------------------------------------------------
+-spec encode(#coap_message{}) -> {ok, binary()} | {error, not_support}.
 encode(#coap_message{
     type    = Type,
     token   = Token,
@@ -29,14 +30,16 @@ encode(#coap_message{
     id      = MessageID,
     options = Options,
     payload = PayLoad}) ->
-    list_to_binary(
-        [<<?VERSION:2,
-            (get_code_by_type(Type)):2,
-            (size(Token)):4,
-            Code:3, Detail:5, MessageID:16>>,
-            Token,
-            (encode_options(Options)),
-            (encode_payload(PayLoad))]).
+    Result  = list_to_binary(
+                [<<?VERSION:2,
+                (get_code_by_type(Type)):2,
+                (size(Token)):4,
+                Code:3, Detail:5, MessageID:16>>,
+                Token,
+                (encode_options(Options)),
+                (encode_payload(PayLoad))]),
+    {ok, Result};
+encode(_Data) -> {error, not_support}.
 
 encode_options(Options) ->
     SortOption = fun(#option{code = Code1},#option{code = Code2}) -> Code2 >= Code1 end,
@@ -62,9 +65,9 @@ encode_payload(?NO_PAYLOAD)                         -> <<>>.
 %%------------------------------------------------------------------
 %% decode
 %%------------------------------------------------------------------
--spec decode(binary()) -> #coap_message{}.
-decode(<<Version:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, MessageID:16, Token:TKL/bytes, Tail/binary>>) ->
-    Version = 1,
+-spec decode(binary()) -> {ok, #coap_message{}} | {error, Reason}.
+decode(<<?VERSION:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, MessageID:16, Token:TKL/bytes,
+    Tail/binary>>) ->
     {Options, Payload} = decode_options_payload(Tail),
     #coap_message{
         type    = get_type_by_code(TypeCode),
@@ -73,9 +76,10 @@ decode(<<Version:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, Message
         token   = Token,
         options = Options,
         payload = Payload
-    }.
+    };
+decode(_Data) -> {error, un_support_packet}.
 
-decode_options_payload(Data)-> decode_options_payload(Data, 0, []).
+decode_options_payload(Data) -> decode_options_payload(Data, 0, []).
 
 decode_options_payload(<<>>,                              _LastOptionCode, OptionList)  -> {OptionList, ?NO_PAYLOAD};
 decode_options_payload(<<16#FF, Payload/binary>>,         _LastOptionCode, OptionList)  -> {OptionList, Payload};
@@ -84,46 +88,49 @@ decode_options_payload(<<Delta:4, Length:4, Tail/binary>>, LastOptionCode, Optio
     {RealLength, AfterLengthTail}              = decode_delta_len(Length, AfterDeltaTail),
     <<Value:RealLength/bytes, NewTail/binary>> = AfterLengthTail,
     OptionCode                                 = LastOptionCode + RealDelta,
-    decode_options_payload(NewTail, OptionCode, OptionList ++ [build_option(get_option_by_code(OptionCode), Value)]).
+    decode_options_payload(NewTail, OptionCode, OptionList ++ [build_option(OptionCode, Value)]).
 
 decode_delta_len(Delta, Tail)                              when Delta <  13 -> {Delta,             Tail};
 decode_delta_len(Delta, <<DeltaTail:8,  Tail/binary>>)     when Delta == 13 -> {DeltaTail + 13,    Tail};
 decode_delta_len(Delta, <<DeltaTail:16, Tail/binary>>)     when Delta == 14 -> {DeltaTail + 269,   Tail}.
 
-get_uri_path(#coap_message{options = Options})->
-    get_uri_path(Options, "").
-get_uri_path([#option{name = uri_path, value = Value} | Tail], Result)->
+get_uri_path(#coap_message{options = Options}) -> {ok, get_uri_path(Options, "")};
+get_uri_path(_) -> {error, un_support}.
+
+get_uri_path([#option{name = uri_path, value = Value} | Tail], Result) ->
     get_uri_path(Tail, list_to_binary([Result, "/", Value]));
-get_uri_path([#option{name = _OtherOption, value = _Value} | Tail], Result)->
+get_uri_path([#option{name = _OtherOption, value = _Value} | Tail], Result) ->
     get_uri_path(Tail, Result);
-get_uri_path([], Result)->
-    Result.
+get_uri_path([], Result) -> Result.
 
-get_param(#coap_message{options = Options} = CoAPMessage, Key, DataType) when is_record(CoAPMessage, coap_message)->
-    get_param(Options, Key, DataType, []).
+get_option_param(#coap_message{options = Options} = CoAPMessage, Key, DataType)
+    when is_record(CoAPMessage, coap_message) ->
+    {ok, get_option_param(Options, Key, DataType, [])};
+get_option_param(_Data, _Key, _DataType) -> {error, un_support}.
 
-get_param([Data | Tail], Key, DataType, Result)->
-    case check_data(Data, Key) of
-        {ok, Value} -> get_param(Tail, Key, DataType, [trans_data_type(Value, DataType) | Result]);
-        error       -> get_param(Tail, Key, DataType, Result)
+get_option_param([Data | Tail], Key, DataType, Result) ->
+    case check_data_key(Data, Key) of
+        {ok, Value} -> get_option_param(Tail, Key, DataType, [trans_data_type(Value, DataType) | Result]);
+        error       -> get_option_param(Tail, Key, DataType, Result)
     end;
-get_param([], _Key, _DataType, Result)-> lists:reverse(Result).
+get_option_param([], _Key, _DataType, Result) -> lists:reverse(Result).
 
-check_data({Key, Value}, Key)         -> {ok, Value};
-check_data({_OtherKey, _Value}, _Key) -> error;
-check_data(#option{name = Key, value = Value}, Key)         -> {ok, Value};
-check_data(#option{name = _OtherKey, value = _Value}, _Key) -> error.
+check_data_key({Key, Value}, Key)         -> {ok, Value};
+check_data_key({_OtherKey, _Value}, _Key) -> error;
+check_data_key(#option{name = Key, value = Value}, Key)         -> {ok, Value};
+check_data_key(#option{name = _OtherKey, value = _Value}, _Key) -> error.
 
 trans_data_type(Data, binary) when is_binary(Data)  -> Data;
 trans_data_type(Data, binary) when is_integer(Data) -> binary:encode_unsigned(Data);
-trans_data_type(Data, integer) when is_integer(Data)-> Data;
+trans_data_type(Data, integer) when is_integer(Data) -> Data;
 trans_data_type(Data, integer) when is_binary(Data) -> binary:decode_unsigned(Data).
 
 %%------------------------------------------------------------------
 %%  build function
 %%------------------------------------------------------------------
 
-build_option(Data, Value) -> Data#option{value = Value}.
+build_option(Option, Value) when is_record(Option, option) -> {ok, Option#option{value = Value}};
+build_option(Code  , Value) when is_integer(Code) -> build_option(get_option_by_code(Code), Value).
 
 %%------------------------------------------------------------------
 %% parse function

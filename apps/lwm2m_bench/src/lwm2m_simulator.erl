@@ -64,7 +64,7 @@ callback_mode() ->
     state_functions.
 
 working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
-    CoAPMessage = coap_message_util:decode(Packet),
+    {ok, CoAPMessage} = coap_message_util:decode(Packet),
     %% fresh new message id and if message has uri observe
     NewState = fresh_coap_state(CoAPMessage, State),
     io:format("Receive coap message:~p~n", [CoAPMessage]),
@@ -88,7 +88,7 @@ wait_response(state_timeout, {?ACK_OR_DIE, _AckTimeout, LastTimes, CoAPMessage},
 wait_response(state_timeout, {?SIMPLE_CON, _AckTimeout, LastTimes, _CoAPMessage}, _State) when LastTimes =:= 1 ->
     keep_state_and_data;
 wait_response(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, #coap_state{sampler = Sampler,sampler_arg = SamplerArg} = State)->
-    CoAPMessage = coap_message_util:decode(Packet),
+    {ok, CoAPMessage} = coap_message_util:decode(Packet),
     io:format("waitting response ~p~n",[CoAPMessage]),
     case Sampler(CoAPMessage, SamplerArg) of
         ok              -> {next_state, working, fresh_coap_state(CoAPMessage, State),[{timeout, cancel}]};
@@ -215,7 +215,7 @@ handle_reset(#coap_message{} = _CoapMessage, _State) ->
     keep_state_and_data.
 
 handle_get(#coap_message{id = MessageID, token = Token} = CoapMessage, #coap_state{} = State) ->
-    Path = coap_message_util:get_uri_path(CoapMessage),
+    {ok, Path} = coap_message_util:get_uri_path(CoapMessage),
     case Path of
         <<"/3/0">> ->
             {keep_state, send(lwm2m_message_util:response_auto_observe_3_0(MessageID, Token), State)};
@@ -250,6 +250,7 @@ send_request(RequestStyle, CoAPMessage, State) ->
 %% will fresh message id and uri observe before send.
 -spec send(#coap_message{}, #coap_state{}) -> #coap_state{}.
 send(CoAPMessage, #coap_state{socket = Socket, host = Host, port = Port} = State) ->
-    gen_udp:send(Socket, Host, Port, coap_message_util:encode(CoAPMessage)),
+    {ok, Package} = coap_message_util:encode(CoAPMessage),
+    gen_udp:send(Socket, Host, Port, Package),
     io:format("Send Message :~p~n", [CoAPMessage]),
     fresh_coap_state(CoAPMessage, State).
