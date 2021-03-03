@@ -16,7 +16,7 @@
 
 -export([   register/3,
             register_standard_module/3,
-            fresh_register/2,
+            update_register/2,
             deregister/2]).
 
 -export([   response_auto_observe_4_0_8/2,
@@ -102,7 +102,7 @@ register_standard_module(MessageID, IMEI, Payload) ->
         payload = Payload
     }.
 
-fresh_register(MessageID, IMEI) ->
+update_register(MessageID, IMEI) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_PATH,  IMEI),
@@ -198,7 +198,7 @@ response_auto_observe_3_0(MessageID, Token) ->
 %% binary payload prepare
 publish_binary_payload(DataSetID, Data) ->
     DataLen = size(Data),
-    Payload = <<16#2:8, DataSetID:16, DataLen:16, Data/binary>>.
+    <<16#2:8, DataSetID:16, DataLen:16, Data/binary>>.
 
 publish(ProductDataType, MessageID, Token, Payload) ->
     ContentForMate = case ProductDataType of
