@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 20. 2月 2021 2:41 下午
 %%%-------------------------------------------------------------------
--module(aep_tcp_message_util).
+-module(tcp_message_util).
 -author("DDDHuang").
 -include("aep_tcp.hrl").
 

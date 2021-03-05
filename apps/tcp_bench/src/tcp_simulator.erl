@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 20. 2月 2021 5:43 下午
 %%%-------------------------------------------------------------------
--module(aep_tcp_simulator).
+-module(tcp_simulator).
 -author("DDDHuang").
 
 -behaviour(gen_statem).

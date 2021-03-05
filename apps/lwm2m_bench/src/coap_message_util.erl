@@ -65,7 +65,7 @@ encode_payload(?NO_PAYLOAD)                         -> <<>>.
 %%------------------------------------------------------------------
 %% decode
 %%------------------------------------------------------------------
--spec decode(binary()) -> {ok, #coap_message{}} | {error, Reason}.
+-spec decode(binary()) -> {ok, #coap_message{}} | {error, any()}.
 decode(<<?VERSION:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, MessageID:16, Token:TKL/bytes,
     Tail/binary>>) ->
     {Options, Payload} = decode_options_payload(Tail),

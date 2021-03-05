@@ -67,14 +67,14 @@ working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
     {ok, CoAPMessage} = coap_message_util:decode(Packet),
     %% fresh new message id and if message has uri observe
     NewState = fresh_coap_state(CoAPMessage, State),
-    io:format("Receive coap message:~p~n", [CoAPMessage]),
+    io:format("Receive coap message:~0p~n", [CoAPMessage]),
     handle_message(CoAPMessage, NewState);
 
 working(cast, Command, State) ->
-    io:format("receive command ~p~n", [Command]),
+    io:format("receive command ~0p~n", [Command]),
     execute(Command, State);
 working(Any, Data, State) ->
-    io:format("working，event type ~p~n, Data ~p~n,State ~p~n ", [Any, Data, State]),
+    io:format("working，event type ~0p~n, Data ~0p~n,State ~0p~n ", [Any, Data, State]),
     keep_state_and_data.
 
 %% RequestStyle :: ack_or_die | simple_con
@@ -89,14 +89,14 @@ wait_response(state_timeout, {?SIMPLE_CON, _AckTimeout, LastTimes, _CoAPMessage}
     keep_state_and_data;
 wait_response(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, #coap_state{sampler = Sampler,sampler_arg = SamplerArg} = State)->
     {ok, CoAPMessage} = coap_message_util:decode(Packet),
-    io:format("waitting response ~p~n",[CoAPMessage]),
+    io:format("waitting response ~0p~n",[CoAPMessage]),
     case Sampler(CoAPMessage, SamplerArg) of
         ok              -> {next_state, working, fresh_coap_state(CoAPMessage, State),[{timeout, cancel}]};
         {error, Reason} -> {stop, {shutdown, {action_failed , Reason}}, State};
         ignore          -> {keep_state, fresh_coap_state(CoAPMessage, State)}
     end;
 wait_response(Any, Data, State) ->
-    io:format("wait message, event type ~p~n, Data ~p~n,State ~p~n ", [Any, Data, State]),
+    io:format("wait message, event type ~0p~n, Data ~0p~n,State ~0p~n ", [Any, Data, State]),
     keep_state_and_data.
 
 terminate(_Reason, _StateName, _State = #coap_state{socket = Socket}) ->
@@ -252,5 +252,5 @@ send_request(RequestStyle, CoAPMessage, State) ->
 send(CoAPMessage, #coap_state{socket = Socket, host = Host, port = Port} = State) ->
     {ok, Package} = coap_message_util:encode(CoAPMessage),
     gen_udp:send(Socket, Host, Port, Package),
-    io:format("Send Message :~p~n", [CoAPMessage]),
+    io:format("Send Message :~0p~n", [CoAPMessage]),
     fresh_coap_state(CoAPMessage, State).
