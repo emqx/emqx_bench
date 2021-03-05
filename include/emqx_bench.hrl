@@ -27,8 +27,8 @@
 -record(task,
 {
     index               :: integer(),
-    task_ref            :: atom(),
-    task_info           :: any()
+    action              :: function(),
+    args                :: any()
 }).
 
 -record(task_executed_status,

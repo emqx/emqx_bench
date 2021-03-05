@@ -11,6 +11,7 @@
 
 -behaviour(gen_statem).
 -include("coap.hrl").
+-include_lib("emqx_bench/include/emqx_bench.hrl").
 
 -export([start_link/1]).
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
@@ -34,7 +35,8 @@
     register_payload    = <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>,
     message_id_index    = 0             :: integer(),
     token_19_0_0        = un_defined    :: un_defined   | binary(),
-    task_list           = []            :: list()
+    task_list           = []            :: list(),
+    task_counter        = un_defined    :: term()
 }).
 
 start_link(Args) ->
@@ -68,13 +70,53 @@ working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
     NewState = fresh_coap_state(CoAPMessage, State),
     io:format("Receive coap message:~0p~n", [CoAPMessage]),
     handle_message(CoAPMessage, NewState);
-
 working(cast, Command, State) ->
-    io:format("receive command ~0p~n", [Command]),
     execute(Command, State);
 working(Any, Data, State) ->
     io:format("working，event type ~0p~n, Data ~0p~n,State ~0p~n ", [Any, Data, State]),
     keep_state_and_data.
+
+execute_task_list(internal, start, #coap_state{task_list = [Task | TaskList]} = State) ->
+    count_task_execute_result(State, Task, execute),
+    execute_task(Task, State#coap_state{task_list = TaskList});
+execute_task_list(internal, start, #coap_state{task_list = []} = State) ->
+    {next_state, working, State}.
+execute_task(Task, State) ->
+    Message = build_message(Task, State),
+    count_task_execute_result(State, Task, execute),
+    %% todo add workflow sampler
+    send_request(Message, State).
+build_message(#task{action = Action, args = Args}, State) ->
+    build_message(Action, Args, State).
+build_message(register, _Args,
+    #coap_state{
+        message_id_index = MessageID,
+        lifetime = LifeTime,
+        imei = IMEI,
+        register_payload = RegisterPayload}) ->
+    lwm2m_message_util:register(MessageID, LifeTime, IMEI, RegisterPayload);
+build_message(register_standard_module, _Args,
+    #coap_state{
+        message_id_index = MessageID,
+        lifetime = LifeTime,
+        imei = IMEI,
+        register_payload = RegisterPayload}) ->
+    lwm2m_message_util:register_standard_module(MessageID, LifeTime, IMEI, RegisterPayload);
+build_message(deregister, _Args,
+    #coap_state{message_id_index = MessageID, imei = IMEI}) ->
+    lwm2m_message_util:deregister(MessageID, IMEI);
+build_message(publish, Payload,
+    #coap_state{message_id_index = MessageID, data_type = ProductDataType,  token_19_0_0 = Token}) ->
+    lwm2m_message_util:publish(ProductDataType, MessageID, Token, Payload).
+
+
+count_task_execute_result(#coap_state{task_counter = Counter}, #task{index = Index}, Result) ->
+    count_task_execute_result(Counter, Index, Result);
+count_task_execute_result(un_defined, _TaskIndex, _Result) -> ignore;
+count_task_execute_result(CounterRef, TaskIndex, Result) ->
+%%     todo 计数器？？？  Result
+    counters:add(CounterRef, TaskIndex, 1).
+
 
 %% RequestStyle :: ack_or_die | simple_con
 %% ack_or_die -> timeout -> shutdown
@@ -145,7 +187,12 @@ wait_response(Any, Data, State) ->
 
 add_sampler_arg(State, Sampler, SamplerArgs)->
     State#coap_state{sampler = Sampler,sampler_arg = SamplerArgs}.
-
+execute({execute_task_list, TaskList}, State)->
+    {next_state, execute_task_list, State#coap_state{task_list = TaskList}, [{next_event, internal, start}]};
+execute({Action, Args}, State) ->
+    CoAPMessage = build_message(Action, Args, State),
+    %% todo add sampler
+    send_request(CoAPMessage, State);
 execute({register},
     #coap_state{message_id_index = MessageID, lifetime = LifeTime,
         imei = IMEI, register_payload = RegisterPayload} = State) ->
