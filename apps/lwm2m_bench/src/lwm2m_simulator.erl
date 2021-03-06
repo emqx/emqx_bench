@@ -17,44 +17,7 @@
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
 -export([working/3, wait_message/3, execute_task_list/3]).
--export([register/1, de_register/1, update_register/1, publish/2]).
-
--define(SERVER, ?MODULE).
-
--define(MSG_TIMEOUT, message_time_out).
-
-
--define(REGISTER_SAMPLER, fun
-                              (#coap_message{id = AckID, method = ?CREATED},
-                                  #coap_state{current_request_id = AckID} = CurrentState) ->
-                                  {next_state, working, CurrentState, [{state_timeout, cancel}]};
-                              (#coap_message{id = AckID, method = _Method},
-                                  #coap_state{current_request_id = AckID} = CurrentState) ->
-                                  {next_state, working, CurrentState};
-                              (_CoAPMessage, _CurrentState) -> keep_state_and_data;
-                              (?MSG_TIMEOUT, CurrentState) -> {next_state, working, CurrentState}
-                          end).
--define(DEREGISTER_SAMPLER, fun
-                                (#coap_message{id = AckID, method = ?DELETED},
-                                    #coap_state{current_request_id = AckID} = CurrentState) ->
-                                    {next_state, working, CurrentState, [{state_timeout, cancel}]};
-                                (#coap_message{id = AckID, method = _Method},
-                                    #coap_state{current_request_id = AckID} = CurrentState) ->
-                                    {next_state, working, CurrentState};
-                                (_CoAPMessage, _CurrentState) -> keep_state_and_data;
-                                (?MSG_TIMEOUT, CurrentState) -> {next_state, working, CurrentState}
-                            end).
--define(PUBLISH_SAMPLER, fun
-                             (#coap_message{type = ?ACK, id = AckID},
-                                 #coap_state{current_request_id = AckID} = CurrentState) ->
-                                 {next_state, working, CurrentState};
-                             (#coap_message{id = AckID, method = _Method},
-                                 #coap_state{current_request_id = AckID} = CurrentState) ->
-                                 {next_state, working, CurrentState};
-                             (_CoAPMessage, _CurrentState) -> keep_state_and_data;
-                             (?MSG_TIMEOUT, CurrentState) -> {next_state, working, CurrentState}
-                         end).
-
+-export([register/1, de_register/1, update_register/1, publish/2, close/1]).
 
 -record(coap_state, {
     socket                              :: gen_udp:socket(),
@@ -67,9 +30,13 @@
     lifetime            = <<"300">>     :: binary(),
     register_payload    = <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>,
     message_id_index    = 0             :: integer(),
-    token_19_0_0        = un_defined    :: un_defined   | binary(),
+    token_19_0_0        = undefined     :: undefined   | binary(),
     task_list           = []            :: list(),
-    task_callback       = un_defined    :: term()
+    %% task_callback :: {
+    %%                      fun( Task :: #task{},Result :: success | {fail, Reason}, CallBackArgs :: any()),
+    %%                      CallBackArgs :: any()
+    %%                  }
+    task_callback       = undefined    :: term()
 }).
 
 start_link(Args) ->
@@ -88,10 +55,15 @@ do_init([{port, Port} | Args], State) -> do_init(Args, State#coap_state{port = P
 do_init([{register_payload, Payload} | Args], State) -> do_init(Args, State#coap_state{register_payload = Payload});
 do_init([{lifetime, Lifetime} | Args], State) ->
     do_init(Args, State#coap_state{lifetime = list_to_binary(integer_to_list(Lifetime))});
+
 do_init([{data_type, pass_through} | Args], State) -> do_init(Args, State#coap_state{data_type = pass_through});
 do_init([{data_type, json} | Args], State) -> do_init(Args, State#coap_state{data_type = json});
 do_init([{data_type, binary} | Args], State) -> do_init(Args, State#coap_state{data_type = binary});
 do_init([{data_type, _} | Args], State) -> do_init(Args, State#coap_state{data_type = pass_through});
+
+do_init([{task_list, TaskList} | Args], State) -> do_init(Args, State#coap_state{task_list = TaskList});
+do_init([{task_callback, CallBack} | Args], State) -> do_init(Args, State#coap_state{task_callback = CallBack});
+
 do_init([{_, _} | Args], State) -> do_init(Args, State);
 do_init([], State) ->
 %%   {ok, Sock} = gen_udp:open(0, [{ip, {192,168,1,120}}, binary, {active, false}, {reuseaddr, false}]),
@@ -102,10 +74,9 @@ working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
     {ok, CoAPMessage} = coap_message_util:decode(Packet),
     %% fresh new message id and if message has uri observe
     NewMessageIDState = fresh_coap_state(CoAPMessage, State),
-    io:format("Receive coap message:~0p~n", [CoAPMessage]),
     handle_message(CoAPMessage, NewMessageIDState);
 working(cast, Command, State) -> cast_command(Command, State);
-working(Event, EventContext, State) -> io:format("un support ~0p,~0p,~0p", [Event, EventContext, State]).
+working(_Event, _EventContext, _State) -> keep_state_and_data.
 
 wait_message(state_timeout, {AckTimeout, LastTimes, CoAPMessage}, State) when LastTimes > 1 ->
     {keep_state, send(CoAPMessage, State),
@@ -113,15 +84,13 @@ wait_message(state_timeout, {AckTimeout, LastTimes, CoAPMessage}, State) when La
             {AckTimeout * (?MAX_RETRANSMIT - LastTimes + 1), LastTimes - 1, CoAPMessage}}]};
 wait_message(state_timeout, {_AckTimeout, LastTimes, _CoAPMessage},
     #coap_state{sampler = Sampler} = State) when LastTimes =:= 1 ->
-    Sampler(?MSG_TIMEOUT, State);
-wait_message(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet},
-    #coap_state{sampler = Sampler} = State)->
+    Sampler(message_time_out, State);
+wait_message(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, #coap_state{sampler = Sampler} = State) ->
     {ok, CoAPMessage} = coap_message_util:decode(Packet),
     NewMessageIDState = fresh_coap_state(CoAPMessage, State),
-    io:format("waitting response ~0p~n",[CoAPMessage]),
     Sampler(CoAPMessage, NewMessageIDState);
 wait_message(cast, Command, State) -> cast_command(Command, State);
-wait_message(Event, EventContext, State) -> io:format("un support ~0p,~0p,~0p", [Event, EventContext, State]).
+wait_message(_Event, _EventContext, _State) -> keep_state_and_data.
 
 execute_task_list(internal, start, #coap_state{task_list = [Task | TaskList]} = State) ->
     task_callback(State, Task, execute),
@@ -129,26 +98,43 @@ execute_task_list(internal, start, #coap_state{task_list = [Task | TaskList]} = 
 execute_task_list(internal, start, #coap_state{task_list = []} = State) ->
     {next_state, working, State};
 execute_task_list(cast, Command, State) -> cast_command(Command, State);
-execute_task_list(Event, EventContext, State) -> io:format("un support ~0p,~0p,~0p", [Event, EventContext, State]).
+execute_task_list(_Event, _EventContext, _State) -> keep_state_and_data.
 
 %%--------------------------------------------------------------------------------
 %% execute function
 %%--------------------------------------------------------------------------------
-cast_command({new_task, Task},  #coap_state{task_list = TaskList} = State)->
+%% from gen_statem:cast(Pid, Command)
+cast_command({new_task, Task},  #coap_state{task_list = TaskList} = State) ->
     {next_state, execute_task_list, State#coap_state{task_list = lists:append(TaskList, [Task])},
         [{next_event, internal, start}]}.
 
+execute_task(#task{action = close}, _State) -> {stop, command};
 execute_task(Task, State) ->
     CoAPMessage = build_message(Task, State),
     Sampler = find_sampler(Task),
     send_request(CoAPMessage, State#coap_state{sampler = Sampler}).
 
-task_callback(#coap_state{task_callback = un_defined}, _Task, _Result) -> ok;
+task_callback(#coap_state{task_callback = undefined}, _Task, _Result) -> ok;
 task_callback(#coap_state{task_callback = {Function, Args}}, Task, Result) -> Function(Task, Result, Args).
 
-find_sampler(#task{action = register}) -> ?REGISTER_SAMPLER;
-find_sampler(#task{action = de_register}) -> ?DEREGISTER_SAMPLER;
-find_sampler(#task{action = publish}) -> ?PUBLISH_SAMPLER.
+find_sampler(#task{action = register} = Task)    -> method_sampler(Task, ?CREATED);
+find_sampler(#task{action = de_register} = Task) -> method_sampler(Task, ?DELETED);
+find_sampler(#task{action = publish} = Task)     -> method_sampler(Task, ?ACK).
+
+method_sampler(Task, Method)->
+    fun
+        (#coap_message{id = MsgID, method = AckMethod}, #coap_state{current_request_id = MsgID} = State) ->
+            ExecuteResult = case AckMethod =:= Method of
+                                true -> success;
+                                false -> {fail, AckMethod}
+                            end,
+            task_callback(State, Task, ExecuteResult),
+            {next_state, working, State, [{state_timeout, cancel}]};
+        (CoAPMessage, _State) when is_record(CoAPMessage, coap_message) -> keep_state_and_data;
+        (message_time_out, State) ->
+            task_callback(State, Task, {fail, message_time_out}),
+            {next_state, working, State}
+    end.
 
 %%--------------------------------------------------------------------------------
 %%  simulator action
@@ -169,6 +155,10 @@ de_register(Pid) ->
 -spec publish(pid(), binary()) -> any().
 publish(Pid, PublishData) ->
     gen_statem:cast(Pid, {new_task, #task{action = publish, args = PublishData}}).
+
+-spec close(pid()) -> ok.
+close(Pid) ->
+    gen_statem:cast(Pid, {new_task, #task{action = close}}).
 
 %%--------------------------------------------------------------------------------
 %%  fresh message data
@@ -275,5 +265,4 @@ send_request(#coap_message{id = RequestID} = CoAPMessage, State) ->
 send(CoAPMessage, #coap_state{socket = Socket, host = Host, port = Port} = State) ->
     {ok, Package} = coap_message_util:encode(CoAPMessage),
     gen_udp:send(Socket, Host, Port, Package),
-    io:format("Send Message :~0p~n", [CoAPMessage]),
     fresh_coap_state(CoAPMessage, State).
