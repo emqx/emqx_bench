@@ -69,11 +69,11 @@ do_init([], State) ->
 %%   {ok, Sock} = gen_udp:open(0, [{ip, {192,168,1,120}}, binary, {active, false}, {reuseaddr, false}]),
     {ok, Socket} = gen_udp:open(0, [binary]),
     State#coap_state{socket = Socket}.
-
+%%--------------------------------------------------------------------------------
+%% state function
+%%--------------------------------------------------------------------------------
 working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
-    {ok, CoAPMessage} = coap_message_util:decode(Packet),
-    %% fresh new message id and if message has uri observe
-    NewMessageIDState = fresh_coap_state(CoAPMessage, State),
+    {CoAPMessage, NewMessageIDState} = udp_message(Packet, State),
     handle_message(CoAPMessage, NewMessageIDState);
 working(cast, Command, State) -> cast_command(Command, State);
 working(_Event, _EventContext, _State) -> keep_state_and_data.
@@ -86,8 +86,7 @@ wait_message(state_timeout, {_AckTimeout, LastTimes, _CoAPMessage},
     #coap_state{sampler = Sampler} = State) when LastTimes =:= 1 ->
     Sampler(message_time_out, State);
 wait_message(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, #coap_state{sampler = Sampler} = State) ->
-    {ok, CoAPMessage} = coap_message_util:decode(Packet),
-    NewMessageIDState = fresh_coap_state(CoAPMessage, State),
+    {CoAPMessage, NewMessageIDState} = udp_message(Packet, State),
     Sampler(CoAPMessage, NewMessageIDState);
 wait_message(cast, Command, State) -> cast_command(Command, State);
 wait_message(_Event, _EventContext, _State) -> keep_state_and_data.
@@ -103,6 +102,14 @@ execute_task_list(_Event, _EventContext, _State) -> keep_state_and_data.
 %%--------------------------------------------------------------------------------
 %% execute function
 %%--------------------------------------------------------------------------------
+udp_message(Packet, State) ->
+    try coap_message_util:decode(Packet) of
+        {ok, CoAPMessage} -> {CoAPMessage, fresh_coap_state(CoAPMessage, State)};
+        {error, _} -> {#coap_message{}, State}
+        catch
+        _:_  -> {#coap_message{}, State}
+    end.
+
 %% from gen_statem:cast(Pid, Command)
 cast_command({new_task, Task},  #coap_state{task_list = TaskList} = State) ->
     {next_state, execute_task_list, State#coap_state{task_list = lists:append(TaskList, [Task])},
