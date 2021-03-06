@@ -27,25 +27,25 @@ start_link() ->
 %%                  type => worker(),       % optional
 %%                  modules => modules()}   % optional
 init([]) ->
-    SupFlags = #{strategy => one_for_all,
+    SupFlags = #{strategy => simple_one_for_one,
                  intensity => 0,
                  period => 1},
-    ChildSpecs = [],
-    {ok, {SupFlags, ChildSpecs}}.
+    {ok, {SupFlags, child_spec()}}.
 
 %% internal functions
-child_spec(Args) ->
+child_spec() ->
     [#{ id          => lwm2m_simulator,
-        start       => {lwm2m_simulator, start_link, Args},
+        start       => {lwm2m_simulator, start_link, []},
         restart     => temporary,
         shutdown    => brutal_kill,
         type        => worker}].
 
 start_lw_test() ->
+    lwm2m_bench_app:start(a,a),
     Host = "221.229.214.202",
 %%    Host = "221.229.214.201",
     Port = 5683,
     IMEI = <<"202002261804000">>,
     Args = [{imei, IMEI}, {host, Host}, {port, Port}],
-    {ok, LWPid} = supervisor:start_child(?SERVER, child_spec(Args)),
+    {ok, LWPid} = supervisor:start_child(?SERVER, [Args]),
     lwm2m_simulator:register(LWPid).

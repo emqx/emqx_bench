@@ -16,12 +16,45 @@
 -export([start_link/1]).
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
--export([working/3, wait_message/3, execute_task_list/3, handle_event/3]).
+-export([working/3, wait_message/3, execute_task_list/3]).
 -export([register/1, de_register/1, update_register/1, publish/2]).
 
 -define(SERVER, ?MODULE).
 
 -define(MSG_TIMEOUT, message_time_out).
+
+
+-define(REGISTER_SAMPLER, fun
+                              (#coap_message{id = AckID, method = ?CREATED},
+                                  #coap_state{current_request_id = AckID} = CurrentState) ->
+                                  {next_state, working, CurrentState, [{state_timeout, cancel}]};
+                              (#coap_message{id = AckID, method = _Method},
+                                  #coap_state{current_request_id = AckID} = CurrentState) ->
+                                  {next_state, working, CurrentState};
+                              (_CoAPMessage, _CurrentState) -> keep_state_and_data;
+                              (?MSG_TIMEOUT, CurrentState) -> {next_state, working, CurrentState}
+                          end).
+-define(DEREGISTER_SAMPLER, fun
+                                (#coap_message{id = AckID, method = ?DELETED},
+                                    #coap_state{current_request_id = AckID} = CurrentState) ->
+                                    {next_state, working, CurrentState, [{state_timeout, cancel}]};
+                                (#coap_message{id = AckID, method = _Method},
+                                    #coap_state{current_request_id = AckID} = CurrentState) ->
+                                    {next_state, working, CurrentState};
+                                (_CoAPMessage, _CurrentState) -> keep_state_and_data;
+                                (?MSG_TIMEOUT, CurrentState) -> {next_state, working, CurrentState}
+                            end).
+-define(PUBLISH_SAMPLER, fun
+                             (#coap_message{type = ?ACK, id = AckID},
+                                 #coap_state{current_request_id = AckID} = CurrentState) ->
+                                 {next_state, working, CurrentState};
+                             (#coap_message{id = AckID, method = _Method},
+                                 #coap_state{current_request_id = AckID} = CurrentState) ->
+                                 {next_state, working, CurrentState};
+                             (_CoAPMessage, _CurrentState) -> keep_state_and_data;
+                             (?MSG_TIMEOUT, CurrentState) -> {next_state, working, CurrentState}
+                         end).
+
 
 -record(coap_state, {
     socket                              :: gen_udp:socket(),
@@ -31,7 +64,7 @@
     sampler                             :: function(),
     current_request_id                  :: term(), %% request message
     data_type           = json          :: pass_through | json      | binary,
-    lifetime            = 300           :: integer(),
+    lifetime            = <<"300">>     :: binary(),
     register_payload    = <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>,
     message_id_index    = 0             :: integer(),
     token_19_0_0        = un_defined    :: un_defined   | binary(),
@@ -42,7 +75,7 @@
 start_link(Args) ->
     gen_statem:start_link(?MODULE, Args, []).
 
-callback_mode() -> [state_functions, handle_event_function].
+callback_mode() -> [state_functions].
 terminate(_Reason, _StateName, _State = #coap_state{socket = Socket}) -> gen_udp:close(Socket).
 code_change(_OldVsn, StateName, State = #coap_state{}, _Extra) -> {ok, StateName, State}.
 
@@ -53,7 +86,8 @@ do_init([{imei, IMEI} | Args], State) -> do_init(Args, State#coap_state{imei = I
 do_init([{host, Host} | Args], State) -> do_init(Args, State#coap_state{host = Host});
 do_init([{port, Port} | Args], State) -> do_init(Args, State#coap_state{port = Port});
 do_init([{register_payload, Payload} | Args], State) -> do_init(Args, State#coap_state{register_payload = Payload});
-do_init([{lifetime, Lifetime} | Args], State) -> do_init(Args, State#coap_state{lifetime = Lifetime});
+do_init([{lifetime, Lifetime} | Args], State) ->
+    do_init(Args, State#coap_state{lifetime = list_to_binary(integer_to_list(Lifetime))});
 do_init([{data_type, pass_through} | Args], State) -> do_init(Args, State#coap_state{data_type = pass_through});
 do_init([{data_type, json} | Args], State) -> do_init(Args, State#coap_state{data_type = json});
 do_init([{data_type, binary} | Args], State) -> do_init(Args, State#coap_state{data_type = binary});
@@ -67,9 +101,11 @@ do_init([], State) ->
 working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
     {ok, CoAPMessage} = coap_message_util:decode(Packet),
     %% fresh new message id and if message has uri observe
-    NewState = fresh_coap_state(CoAPMessage, State),
+    NewMessageIDState = fresh_coap_state(CoAPMessage, State),
     io:format("Receive coap message:~0p~n", [CoAPMessage]),
-    handle_message(CoAPMessage, NewState).
+    handle_message(CoAPMessage, NewMessageIDState);
+working(cast, Command, State) -> cast_command(Command, State);
+working(Event, EventContext, State) -> io:format("un support ~0p,~0p,~0p", [Event, EventContext, State]).
 
 wait_message(state_timeout, {AckTimeout, LastTimes, CoAPMessage}, State) when LastTimes > 1 ->
     {keep_state, send(CoAPMessage, State),
@@ -81,25 +117,27 @@ wait_message(state_timeout, {_AckTimeout, LastTimes, _CoAPMessage},
 wait_message(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet},
     #coap_state{sampler = Sampler} = State)->
     {ok, CoAPMessage} = coap_message_util:decode(Packet),
+    NewMessageIDState = fresh_coap_state(CoAPMessage, State),
     io:format("waitting response ~0p~n",[CoAPMessage]),
-    Sampler(CoAPMessage, State).
+    Sampler(CoAPMessage, NewMessageIDState);
+wait_message(cast, Command, State) -> cast_command(Command, State);
+wait_message(Event, EventContext, State) -> io:format("un support ~0p,~0p,~0p", [Event, EventContext, State]).
 
 execute_task_list(internal, start, #coap_state{task_list = [Task | TaskList]} = State) ->
     task_callback(State, Task, execute),
     execute_task(Task, State#coap_state{task_list = TaskList});
 execute_task_list(internal, start, #coap_state{task_list = []} = State) ->
-    {next_state, working, State}.
-
-handle_event(cast, {new_task, Task}, #coap_state{task_list = TaskList} = State) ->
-    {next_state, execute_task_list, State#coap_state{task_list = lists:append(TaskList, [Task])},
-        [{next_event, internal, start}]};
-handle_event(Any, Data, State) ->
-    io:format("wait message, event type ~0p~n, Data ~0p~n,State ~0p~n ", [Any, Data, State]),
-    keep_state_and_data.
+    {next_state, working, State};
+execute_task_list(cast, Command, State) -> cast_command(Command, State);
+execute_task_list(Event, EventContext, State) -> io:format("un support ~0p,~0p,~0p", [Event, EventContext, State]).
 
 %%--------------------------------------------------------------------------------
 %% execute function
 %%--------------------------------------------------------------------------------
+cast_command({new_task, Task},  #coap_state{task_list = TaskList} = State)->
+    {next_state, execute_task_list, State#coap_state{task_list = lists:append(TaskList, [Task])},
+        [{next_event, internal, start}]}.
+
 execute_task(Task, State) ->
     CoAPMessage = build_message(Task, State),
     Sampler = find_sampler(Task),
@@ -107,31 +145,6 @@ execute_task(Task, State) ->
 
 task_callback(#coap_state{task_callback = un_defined}, _Task, _Result) -> ok;
 task_callback(#coap_state{task_callback = {Function, Args}}, Task, Result) -> Function(Task, Result, Args).
-
--define(REGISTER_SAMPLER, fun
-                              (#coap_message{id = AckID, method = ?CREATED}, #coap_state{current_request_id = AckID} = CurrentState) ->
-                                  {next_state, working, CurrentState, [{state_timeout, cancel}]};
-                              (#coap_message{id = AckID, method = _Method}, #coap_state{current_request_id = AckID} = CurrentState) ->
-                                  {next_state, working, CurrentState};
-                              (_CoAPMessage, _CurrentState) -> keep_state_and_data;
-                              (?MSG_TIMEOUT, CurrentState) -> {next_state, working, CurrentState}
-                          end).
--define(DEREGISTER_SAMPLER, fun
-                                (#coap_message{id = AckID, method = ?DELETED}, #coap_state{current_request_id = AckID} = CurrentState) ->
-                                    {next_state, working, CurrentState, [{state_timeout, cancel}]};
-                                (#coap_message{id = AckID, method = _Method}, #coap_state{current_request_id = AckID} = CurrentState) ->
-                                    {next_state, working, CurrentState};
-                                (_CoAPMessage, _CurrentState) -> keep_state_and_data;
-                                (?MSG_TIMEOUT, CurrentState) -> {next_state, working, CurrentState}
-                            end).
--define(PUBLISH_SAMPLER, fun
-                             (#coap_message{type = ?ACK, id = AckID}, #coap_state{current_request_id = AckID} = CurrentState) ->
-                                 {next_state, working, CurrentState};
-                             (#coap_message{type = ?ACK, method = _Method, id = AckID}, AckID) ->
-                                 {error, Method};
-                             (_CoAPMessage, _CurrentState) -> keep_state_and_data;
-                             (?MSG_TIMEOUT, _Arg) -> {next_state, working, CurrentState}
-                         end).
 
 find_sampler(#task{action = register}) -> ?REGISTER_SAMPLER;
 find_sampler(#task{action = de_register}) -> ?DEREGISTER_SAMPLER;
@@ -230,14 +243,14 @@ build_message(register, _Args,
         lifetime = LifeTime,
         imei = IMEI,
         register_payload = RegisterPayload}) ->
-    lwm2m_message_util:register(MessageID, LifeTime, IMEI, RegisterPayload);
+    lwm2m_message_util:register(MessageID, IMEI, LifeTime, RegisterPayload);
 build_message(register_standard_module, _Args,
     #coap_state{
         message_id_index = MessageID,
         lifetime = LifeTime,
         imei = IMEI,
         register_payload = RegisterPayload}) ->
-    lwm2m_message_util:register_standard_module(MessageID, LifeTime, IMEI, RegisterPayload);
+    lwm2m_message_util:register_standard_module(MessageID, IMEI, LifeTime, RegisterPayload);
 build_message(deregister, _Args,
     #coap_state{message_id_index = MessageID, imei = IMEI}) ->
     lwm2m_message_util:deregister(MessageID, IMEI);
@@ -248,8 +261,10 @@ build_message(publish, Payload,
 %%--------------------------------------------------------------------------------
 %%  send request
 %%--------------------------------------------------------------------------------
-send_request(CoAPMessage, State) ->
-    {next_state, wait_response, send(CoAPMessage, State),
+send_request(#coap_message{id = RequestID} = CoAPMessage, State) ->
+    NewMessageIDState = fresh_coap_state(CoAPMessage, State),
+    {next_state, wait_message,
+        send(CoAPMessage, NewMessageIDState#coap_state{current_request_id = RequestID}),
         [{state_timeout, ?ACK_TIMEOUT, {?ACK_TIMEOUT, ?MAX_RETRANSMIT, CoAPMessage}}]}.
 
 %%--------------------------------------------------------------------------------

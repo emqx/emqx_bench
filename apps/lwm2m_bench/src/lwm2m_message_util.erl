@@ -61,16 +61,13 @@ bootstrap_sm9(MessageID, IMEI, PubKey) ->
         options = Options
     }.
 
-register(MessageID, IMEI, LifeTime, Payload) when is_integer(LifeTime) ->
-    LifeTimeBinary = list_to_binary(integer_to_list(LifeTime)),
-    register(MessageID, IMEI, LifeTimeBinary, Payload);
-register(MessageID, IMEI, LifeTime, Payload) when is_binary(LifeTime) ->
+register(MessageID, IMEI, LifeTime, Payload) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_QUERY, <<"lwm2m=1.0">>),
         coap_message_util:build_option(?URI_QUERY, <<"ep=", IMEI/binary>>),
         coap_message_util:build_option(?URI_QUERY, <<"b=U">>),
-        coap_message_util:build_option(?URI_QUERY, <<"lt="/binary, LifeTime/binary>>)
+        coap_message_util:build_option(?URI_QUERY, <<"lt=", LifeTime/binary>>)
     ],
     #coap_message{
         type    = ?CON,
@@ -81,16 +78,13 @@ register(MessageID, IMEI, LifeTime, Payload) when is_binary(LifeTime) ->
         payload = Payload
     }.
 
-register_standard_module(MessageID, IMEI, LifeTime, Payload) when is_integer(LifeTime) ->
-    LifeTimeBinary = list_to_binary(integer_to_list(LifeTime)),
-    register_standard_module(MessageID, IMEI, LifeTimeBinary, Payload);
-register_standard_module(MessageID, IMEI, LifeTime, Payload) when is_binary(LifeTime) ->
+register_standard_module(MessageID, IMEI, LifeTime, Payload) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_QUERY, <<"lwm2m=1.0">>),
         coap_message_util:build_option(?URI_QUERY, <<"ep=", IMEI/binary>>),
         coap_message_util:build_option(?URI_QUERY, <<"b=U">>),
-        coap_message_util:build_option(?URI_QUERY, <<"lt="/binary, LifeTime/binary>>),
+        coap_message_util:build_option(?URI_QUERY, <<"lt=", LifeTime/binary>>),
     coap_message_util:build_option(?URI_QUERY, <<"ctapn=Psm0.eDRX0.ctnb">>),
         coap_message_util:build_option(?URI_QUERY, <<"ctm2m=1.0">>),
         coap_message_util:build_option(?URI_QUERY, <<"imsi=e_imsi">>),
@@ -108,15 +102,12 @@ register_standard_module(MessageID, IMEI, LifeTime, Payload) when is_binary(Life
         payload = Payload
     }.
 
-update_register(MessageID, LifeTime, IMEI) when is_integer(LifeTime) ->
-    LifeTimeBinary = list_to_binary(integer_to_list(LifeTime)),
-    update_register(MessageID, LifeTimeBinary, IMEI);
-update_register(MessageID, LifeTime, IMEI) when is_binary(LifeTime) ->
+update_register(MessageID, LifeTime, IMEI) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_PATH,  IMEI),
         coap_message_util:build_option(?URI_QUERY, <<"b=U">>),
-        coap_message_util:build_option(?URI_QUERY, <<"lt="/binary, LifeTime/binary>>)
+        coap_message_util:build_option(?URI_QUERY, <<"lt=", LifeTime/binary>>)
         ],
     #coap_message{
         type    = ?CON,

@@ -42,7 +42,7 @@ encode(#coap_message{
 encode(_Data) -> {error, not_support}.
 
 encode_options(Options) ->
-    SortOption = fun(#option{code = Code1},#option{code = Code2}) -> Code2 >= Code1 end,
+    SortOption = fun(#option{code = Code1}, #option{code = Code2}) -> Code2 >= Code1 end,
     list_to_binary(encode_options(lists:sort(SortOption, Options), 0, [])).
 encode_options([Option = #option{code = Code} | Tail], LastOptionCode, Result) ->
     encode_options(Tail, Code, Result ++ [encode_option(LastOptionCode, Option)]);
@@ -69,14 +69,15 @@ encode_payload(?NO_PAYLOAD)                         -> <<>>.
 decode(<<?VERSION:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, MessageID:16, Token:TKL/bytes,
     Tail/binary>>) ->
     {Options, Payload} = decode_options_payload(Tail),
-    #coap_message{
-        type    = get_type_by_code(TypeCode),
-        method  = get_method_by_code(MethodCode, MethodCodeDetail),
-        id      = MessageID,
-        token   = Token,
-        options = Options,
-        payload = Payload
-    };
+    CoAPMessage = #coap_message{
+                        type    = get_type_by_code(TypeCode),
+                        method  = get_method_by_code(MethodCode, MethodCodeDetail),
+                        id      = MessageID,
+                        token   = Token,
+                        options = Options,
+                        payload = Payload
+                    },
+    {ok, CoAPMessage};
 decode(_Data) -> {error, un_support_packet}.
 
 decode_options_payload(Data) -> decode_options_payload(Data, 0, []).
@@ -129,7 +130,7 @@ trans_data_type(Data, integer) when is_binary(Data) -> binary:decode_unsigned(Da
 %%  build function
 %%------------------------------------------------------------------
 
-build_option(Option, Value) when is_record(Option, option) -> {ok, Option#option{value = Value}};
+build_option(Option, Value) when is_record(Option, option) ->  Option#option{value = Value};
 build_option(Code  , Value) when is_integer(Code) -> build_option(get_option_by_code(Code), Value).
 
 %%------------------------------------------------------------------
