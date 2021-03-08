@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 04. 1月 2021 5:23 下午
 %%%-------------------------------------------------------------------
--module(emqx_bench_asteriod_api).
+-module(emqx_bench_asteroid_api).
 -author("DDDHuang").
 
 %% API
