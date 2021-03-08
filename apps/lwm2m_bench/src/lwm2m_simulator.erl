@@ -72,9 +72,6 @@ do_init([], State) ->
 %%--------------------------------------------------------------------------------
 %% state function
 %%--------------------------------------------------------------------------------
-working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
-    {CoAPMessage, NewMessageIDState} = udp_message(Packet, State),
-    handle_message(CoAPMessage, NewMessageIDState);
 working(internal, start, #coap_state{task_list = [Task | TaskList]} = State) ->
     execute_task(Task, State#coap_state{task_list = TaskList});
 working(internal, start, #coap_state{task_list = []} = State) ->
@@ -93,12 +90,21 @@ wait_message(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, #coap_state{sampl
     Sampler(CoAPMessage, NewMessageIDState);
 wait_message(Event, EventContext, State) -> handle_event(Event, EventContext, State).
 
-handle_event(cast, Command, State) -> cast_command(Command, State);
+handle_event(cast, Command, State) -> cast_message(Command, State);
+handle_event(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
+    %% if no auto observe task, simulator will handle auto observe message.
+    {CoAPMessage, NewMessageIDState} = udp_message(Packet, State),
+    handle_message(CoAPMessage, NewMessageIDState);
 handle_event(_Event, _EventContext, _State) -> keep_state_and_data.
 
 %%--------------------------------------------------------------------------------
 %% execute function
 %%--------------------------------------------------------------------------------
+%% from gen_statem:cast(Pid, Command)
+cast_message({new_task, Task},  #coap_state{task_list = TaskList} = State) ->
+    {next_state, working, State#coap_state{task_list = lists:append(TaskList, [Task])},
+        [{next_event, internal, start}]}.
+
 udp_message(Packet, State) ->
     try coap_message_util:decode(Packet) of
         {ok, CoAPMessage} -> {CoAPMessage, fresh_coap_state(CoAPMessage, State)};
@@ -106,14 +112,13 @@ udp_message(Packet, State) ->
     catch _:_  -> {#coap_message{}, State}
     end.
 
-%% from gen_statem:cast(Pid, Command)
-cast_command({new_task, Task},  #coap_state{task_list = TaskList} = State) ->
-    {next_state, working, State#coap_state{task_list = lists:append(TaskList, [Task])},
-        [{next_event, internal, start}]}.
-
 execute_task(#task{action = close} = Task, State) ->
     task_callback(State, Task, execute),
     {stop, command};
+execute_task(#task{action = auto_observe, args = Timeout} = Task, State) ->
+    task_callback(State, Task, execute),
+    {next_state, wait_message, State#coap_state{sampler = auto_observe_sampler(Task)},
+        [{state_timeout, Timeout, {Timeout, 1, no_request}}]};
 execute_task(Task, State) ->
     task_callback(State, Task, execute),
     CoAPMessage = build_message(Task, State),
@@ -144,6 +149,21 @@ method_sampler(Task, Method)->
         (message_time_out, State) ->
             task_callback(State, Task, {fail, message_time_out}),
             {next_state, working, State, [{next_event, internal, start}]}
+    end.
+
+auto_observe_sampler(Task) ->
+    fun
+        (#coap_message{type = ?CON, method = ?GET} = CoAPMessage, State) ->
+            case handle_auto_observe(CoAPMessage, State) of
+                {ok, NewState} ->
+                    task_callback(State, Task, success),
+                    {keep_state, NewState, [{next_event, internal, start}]};
+                ignore -> keep_state_and_data
+            end;
+        (message_time_out, State) ->
+            task_callback(State, Task, {fail, auto_observe_timeout}),
+            {next_state, working, State, [{next_event, internal, start}]};
+        (_, _) -> keep_state_and_data
     end.
 
 %%--------------------------------------------------------------------------------
@@ -189,48 +209,29 @@ next_message_id(MessageID, State) -> State#coap_state{message_id_index = Message
 %%--------------------------------------------------------------------------------
 %%  handle message
 %%--------------------------------------------------------------------------------
-handle_message(#coap_message{type = Type} = CoapMessage, State) ->
-    case Type of
-        ?ACK -> handle_ack(CoapMessage, State);
-        ?CON -> handle_con(CoapMessage, State);
-        ?NON -> handle_non(CoapMessage, State);
-        ?RESET -> handle_reset(CoapMessage, State)
-    end.
+handle_message(#coap_message{type = ?CON, method = ?GET} = CoAPMessage, State) ->
+    case handle_auto_observe(CoAPMessage, State) of
+        {ok, NewState} -> {keep_state, NewState};
+        _ -> keep_state_and_data
+    end;
+handle_message(#coap_message{type = ?RESET}, _State) ->
+    %% todo
+    all_fail,
+    keep_state_and_data;
+handle_message(_CoAPMessage, _State) -> keep_state_and_data.
 
-handle_ack(#coap_message{} = _CoapMessage, _State) ->
-    keep_state_and_data.
-handle_con(#coap_message{method = Method} = CoapMessage, State) ->
-    case Method of
-        ?EMPTY  -> keep_state_and_data;
-        ?GET    -> handle_get(CoapMessage, State);
-        ?PUT    -> handle_put(CoapMessage,State);
-        ?POST   -> handle_post(CoapMessage, State);
-        ?DELETE -> handle_delete(CoapMessage, State)
-    end.
-handle_non(#coap_message{} = _CoapMessage, _State) ->
-    keep_state_and_data.
-handle_reset(#coap_message{} = _CoapMessage, _State) ->
-    keep_state_and_data.
-
-handle_get(#coap_message{id = MessageID, token = Token} = CoapMessage, #coap_state{} = State) ->
-    {ok, Path} = coap_message_util:get_uri_path(CoapMessage),
+handle_auto_observe(#coap_message{id = MessageID, token = Token} = CoAPMessage, State) ->
+    {ok, Path} = coap_message_util:get_uri_path(CoAPMessage),
     case Path of
         <<"/3/0">> ->
-            {keep_state, send(lwm2m_message_util:response_auto_observe_3_0(MessageID, Token), State)};
+            {ok, send(lwm2m_message_util:response_auto_observe_3_0(MessageID, Token), State)};
         <<"/19/0/0">> ->
-            {keep_state,
-                send(lwm2m_message_util:response_auto_observe_19_0_0(MessageID, Token),
-                    State#coap_state{token_19_0_0 = Token})};
+            {ok, send(lwm2m_message_util:response_auto_observe_19_0_0(MessageID, Token),
+                State#coap_state{token_19_0_0 = Token})};
         <<"/4/0/8">> ->
-            {keep_state, send(lwm2m_message_util:response_auto_observe_4_0_8(MessageID, Token), State)};
-        _ -> keep_state_and_data
+            {ok, send(lwm2m_message_util:response_auto_observe_4_0_8(MessageID, Token), State)};
+        _ -> ignore
     end.
-handle_post(#coap_message{} = _CoapMessage, _State) ->
-    keep_state_and_data.
-handle_put(#coap_message{} = _CoapMessage, _State) ->
-    keep_state_and_data.
-handle_delete(#coap_message{} = _CoapMessage, _State) ->
-    keep_state_and_data.
 
 %%--------------------------------------------------------------------------------
 %%  build message
