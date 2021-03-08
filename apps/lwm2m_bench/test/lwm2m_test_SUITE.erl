@@ -44,11 +44,12 @@ simple_test() ->
         CloseTask
     ],
     Args =
-        [{imei, IMEI},
+        [
+            {socket, new},
+            {imei, IMEI},
             {host, Host},
             {port, Port},
             {task_callback, {CallBackFun, CallBackArg}},
             {task_list, TaskList}
         ],
-    supervisor:start_child(?SERVER, [Args]),
-    ?assertEqual(a,a).
+    supervisor:start_child(?SERVER, [Args]).

@@ -17,7 +17,7 @@
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
 -export([working/3, wait_message/3]).
--export([register/1, de_register/1, update_register/1, publish/2, close/1]).
+-export([register/1, de_register/1, update_register/1, publish/2, close/1, new_imei/3]).
 
 -record(coap_state, {
     socket                              :: gen_udp:socket(),
@@ -64,11 +64,15 @@ do_init([{data_type, _} | Args], State) -> do_init(Args, State#coap_state{data_t
 do_init([{task_list, TaskList} | Args], State) -> do_init(Args, State#coap_state{task_list = TaskList});
 do_init([{task_callback, CallBack} | Args], State) -> do_init(Args, State#coap_state{task_callback = CallBack});
 
-do_init([{_, _} | Args], State) -> do_init(Args, State);
-do_init([], State) ->
+do_init([{socket, Socket} | Args], State) when is_port(Socket) -> do_init(Args, State#coap_state{socket = Socket});
+do_init([{socket, keep} | Args], State) -> do_init(Args, State);
+do_init([{socket, new} | Args], State) ->
 %%   {ok, Sock} = gen_udp:open(0, [{ip, {192,168,1,120}}, binary, {active, false}, {reuseaddr, false}]),
     {ok, Socket} = gen_udp:open(0, [binary]),
-    State#coap_state{socket = Socket}.
+    do_init(Args, State#coap_state{socket = Socket});
+
+do_init([{_, _} | Args], State) -> do_init(Args, State);
+do_init([], State) -> State.
 %%--------------------------------------------------------------------------------
 %% state function
 %%--------------------------------------------------------------------------------
@@ -115,10 +119,15 @@ udp_message(Packet, State) ->
     catch _:_  -> {#coap_message{}, State}
     end.
 
+%%--------------------------------------------------------------------------------
+%% execute task
+%%--------------------------------------------------------------------------------
 execute_task(#task{action = close} = Task, State) ->
     task_callback(State, Task, execute),
     task_callback(State, Task, success),
     {stop, {shutdown, command}, State};
+execute_task(#task{action = new_mei, args = Args}, State) ->
+    {ok, working, do_init(Args, State), [{next_event, internal, start}]};
 execute_task(#task{action = auto_observe, args = Timeout} = Task, State) ->
     task_callback(State, Task, execute),
     {next_state, wait_message, State#coap_state{sampler = auto_observe_sampler(Task)},
@@ -138,7 +147,7 @@ task_callback(#coap_state{task_callback = {Function, Args}}, Task, Result) ->
 
 find_sampler(#task{action = register} = Task)    -> method_sampler(Task, ?CREATED);
 find_sampler(#task{action = de_register} = Task) -> method_sampler(Task, ?DELETED);
-find_sampler(#task{action = publish} = Task)     -> method_sampler(Task, ?ACK).
+find_sampler(#task{action = publish} = Task)     -> method_sampler(Task, ?EMPTY).
 
 method_sampler(Task, Method)->
     fun
@@ -193,6 +202,12 @@ publish(Pid, PublishData) ->
 -spec close(pid()) -> ok.
 close(Pid) ->
     gen_statem:cast(Pid, {new_task, #task{action = close}}).
+
+new_imei(Pid, IMEI, TaskList)->
+    gen_statem:cast(Pid, {new_task,
+        #task{action = new_mei, args = [{imei, IMEI}, {socket, keep}, {task_list, TaskList}]}
+    }).
+
 
 %%--------------------------------------------------------------------------------
 %%  fresh message data
