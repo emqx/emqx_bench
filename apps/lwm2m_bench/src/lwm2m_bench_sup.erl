@@ -10,9 +10,9 @@
 -export([start_link/0]).
 
 -export([init/1]).
--export([start_lw_test/0, t/0]).
 
 -include("coap.hrl").
+-include_lib("emqx_bench/include/emqx_bench.hrl").
 
 -define(SERVER, ?MODULE).
 
@@ -41,34 +41,3 @@ child_spec() ->
         restart     => temporary,
         shutdown    => brutal_kill,
         type        => worker}].
-
-start_lw_test() ->
-    lwm2m_bench_app:start(a,a),
-    Host = "221.229.214.202",
-%%    Host = "221.229.214.201",
-    Port = 5683,
-    IMEI = <<"202002261804000">>,
-    %%                      fun( Task :: #task{},Result :: success | {fail, Reason}, CallBackArgs :: any()),
-    CallBackFun = fun(Task,Result,_) -> io:format("task ~0p execute ~0p~n",[Task,Result]) end,
-    CallBackArg = ignore,
-    Args =
-        [   {imei, IMEI},
-            {host, Host},
-            {port, Port},
-            {task_callback, {CallBackFun, CallBackArg}}
-        ],
-    {ok, LWPid} = supervisor:start_child(?SERVER, [Args]),
-    lwm2m_simulator:register(LWPid).
-
-t()->
-    A = ?CREATED,
-    B = ?DELETED,
-    C = ?CREATED,
-    AB = A =:= B,
-    AC = A =:= C,
-    io:format("A ~0p  ~n",[A]),
-    io:format("B ~0p  ~n",[B]),
-    io:format("C ~0p  ~n",[C]),
-    io:format("A =:= B ~0p  ~n",[AB]),
-    io:format("A =:= C ~0p  ~n",[AC]).
-

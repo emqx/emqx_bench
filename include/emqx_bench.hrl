@@ -30,10 +30,3 @@
     action              :: function(),
     args                :: any()
 }).
-
--record(task_executed_status,
-{
-    status              :: success | fail,
-    reason              :: any(),
-    count_ref              %% count ref
-}).
