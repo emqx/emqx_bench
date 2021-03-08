@@ -16,7 +16,7 @@
 -export([start_link/1]).
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
--export([working/3, wait_message/3, execute_task_list/3]).
+-export([working/3, wait_message/3]).
 -export([register/1, de_register/1, update_register/1, publish/2, close/1]).
 
 -record(coap_state, {
@@ -75,8 +75,11 @@ do_init([], State) ->
 working(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, State) ->
     {CoAPMessage, NewMessageIDState} = udp_message(Packet, State),
     handle_message(CoAPMessage, NewMessageIDState);
-working(cast, Command, State) -> cast_command(Command, State);
-working(_Event, _EventContext, _State) -> keep_state_and_data.
+working(internal, start, #coap_state{task_list = [Task | TaskList]} = State) ->
+    execute_task(Task, State#coap_state{task_list = TaskList});
+working(internal, start, #coap_state{task_list = []} = State) ->
+    {next_state, working, State};
+working(Event, EventContext, State) -> handle_event(Event, EventContext, State).
 
 wait_message(state_timeout, {AckTimeout, LastTimes, CoAPMessage}, State) when LastTimes > 1 ->
     {keep_state, send(CoAPMessage, State),
@@ -88,16 +91,10 @@ wait_message(state_timeout, {_AckTimeout, LastTimes, _CoAPMessage},
 wait_message(info, {udp, _Sock, _PeerIP, _PeerPortNo, Packet}, #coap_state{sampler = Sampler} = State) ->
     {CoAPMessage, NewMessageIDState} = udp_message(Packet, State),
     Sampler(CoAPMessage, NewMessageIDState);
-wait_message(cast, Command, State) -> cast_command(Command, State);
-wait_message(_Event, _EventContext, _State) -> keep_state_and_data.
+wait_message(Event, EventContext, State) -> handle_event(Event, EventContext, State).
 
-execute_task_list(internal, start, #coap_state{task_list = [Task | TaskList]} = State) ->
-    task_callback(State, Task, execute),
-    execute_task(Task, State#coap_state{task_list = TaskList});
-execute_task_list(internal, start, #coap_state{task_list = []} = State) ->
-    {next_state, working, State};
-execute_task_list(cast, Command, State) -> cast_command(Command, State);
-execute_task_list(_Event, _EventContext, _State) -> keep_state_and_data.
+handle_event(cast, Command, State) -> cast_command(Command, State);
+handle_event(_Event, _EventContext, _State) -> keep_state_and_data.
 
 %%--------------------------------------------------------------------------------
 %% execute function
@@ -106,23 +103,29 @@ udp_message(Packet, State) ->
     try coap_message_util:decode(Packet) of
         {ok, CoAPMessage} -> {CoAPMessage, fresh_coap_state(CoAPMessage, State)};
         {error, _} -> {#coap_message{}, State}
-        catch
-        _:_  -> {#coap_message{}, State}
+    catch _:_  -> {#coap_message{}, State}
     end.
 
 %% from gen_statem:cast(Pid, Command)
 cast_command({new_task, Task},  #coap_state{task_list = TaskList} = State) ->
-    {next_state, execute_task_list, State#coap_state{task_list = lists:append(TaskList, [Task])},
+    {next_state, working, State#coap_state{task_list = lists:append(TaskList, [Task])},
         [{next_event, internal, start}]}.
 
-execute_task(#task{action = close}, _State) -> {stop, command};
+execute_task(#task{action = close} = Task, State) ->
+    task_callback(State, Task, execute),
+    {stop, command};
 execute_task(Task, State) ->
+    task_callback(State, Task, execute),
     CoAPMessage = build_message(Task, State),
     Sampler = find_sampler(Task),
     send_request(CoAPMessage, State#coap_state{sampler = Sampler}).
 
+-spec task_callback(#coap_state{}, #task{}, execute | success | {fail, Reason})-> ignore.
 task_callback(#coap_state{task_callback = undefined}, _Task, _Result) -> ok;
-task_callback(#coap_state{task_callback = {Function, Args}}, Task, Result) -> Function(Task, Result, Args).
+task_callback(#coap_state{task_callback = {Function, Args}}, Task, Result) ->
+    try Function(Task, Result, Args), ignore
+    catch _:_  -> ignore
+    end.
 
 find_sampler(#task{action = register} = Task)    -> method_sampler(Task, ?CREATED);
 find_sampler(#task{action = de_register} = Task) -> method_sampler(Task, ?DELETED);
@@ -136,11 +139,11 @@ method_sampler(Task, Method)->
                                 false -> {fail, AckMethod}
                             end,
             task_callback(State, Task, ExecuteResult),
-            {next_state, working, State, [{state_timeout, cancel}]};
+            {next_state, working, State, [{state_timeout, cancel}, {next_event, internal, start}]};
         (CoAPMessage, _State) when is_record(CoAPMessage, coap_message) -> keep_state_and_data;
         (message_time_out, State) ->
             task_callback(State, Task, {fail, message_time_out}),
-            {next_state, working, State}
+            {next_state, working, State, [{next_event, internal, start}]}
     end.
 
 %%--------------------------------------------------------------------------------
