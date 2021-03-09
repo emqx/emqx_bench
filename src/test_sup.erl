@@ -58,7 +58,7 @@ simulator_child_spec(Config = #work_flow{protocol = Protocol}) ->
         type => worker
     }.
 
-find_bench(lwm2m)-> lwm2m_bench_app;
-find_bench(mqtt)-> mqtt_bench_app;
-find_bench(tcp)-> tcp_bench_app.
+find_bench(lwm2m) -> lwm2m_bench_app;
+find_bench(mqtt) -> mqtt_bench_app;
+find_bench(tcp) -> tcp_bench_app.
 
