@@ -30,7 +30,8 @@ start_link(Config) ->
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
-init([Config = #work_flow{task_list = TaskList}]) ->
+init([Config = #work_flow{task_list = TaskList, protocol = Protocol,
+    simulator_config = SimulatorConfig}]) ->
     CounterRef = counters:new(length(TaskList), [write_concurrency]),
     persistent_term:put(?MODULE, CounterRef),
     MaxRestarts = 1000,
@@ -38,8 +39,13 @@ init([Config = #work_flow{task_list = TaskList}]) ->
     SupFlags = #{strategy => simple_one_for_one,
         intensity => MaxRestarts,
         period => MaxSecondsBetweenRestarts},
+    start_bench_app(Protocol, permanent, SimulatorConfig),
     AChild = simulator_child_spec(Config),
     {ok, {SupFlags, [AChild]}}.
+
+start_bench_app(Protocol, StartType, _StartArgs) ->
+    BenchApp = find_bench(Protocol),
+    ok = application:ensure_started(BenchApp, StartType).
 
 %%%===================================================================
 %%% Internal functions
@@ -52,4 +58,7 @@ simulator_child_spec(Config = #work_flow{protocol = Protocol}) ->
         type => worker
     }.
 
+find_bench(lwm2m)-> lwm2m_bench_app;
+find_bench(mqtt)-> mqtt_bench_app;
+find_bench(tcp)-> tcp_bench_app.
 

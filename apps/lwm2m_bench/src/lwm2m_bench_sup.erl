@@ -10,7 +10,8 @@
 -export([start_link/0]).
 
 -export([init/1]).
--export([simple_test/0]).
+
+-export([start_workflow/2]).
 
 -include("coap.hrl").
 -include_lib("emqx_bench/include/emqx_bench.hrl").
@@ -20,15 +21,6 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-%% sup_flags() = #{strategy => strategy(),         % optional
-%%                 intensity => non_neg_integer(), % optional
-%%                 period => pos_integer()}        % optional
-%% child_spec() = #{id => child_id(),       % mandatory
-%%                  start => mfargs(),      % mandatory
-%%                  restart => restart(),   % optional
-%%                  shutdown => shutdown(), % optional
-%%                  type => worker(),       % optional
-%%                  modules => modules()}   % optional
 init([]) ->
     SupFlags = #{strategy => simple_one_for_one,
                  intensity => 0,
@@ -43,38 +35,31 @@ child_spec() ->
         shutdown    => brutal_kill,
         type        => worker}].
 
-simple_test() ->
-    lwm2m_bench_app:start(a, a),
-    Host = "221.229.214.202",
-%%    Host = "221.229.214.201",
-    Port = 5683,
-    IMEI = <<"202002261804000">>,
-    %%                      fun( Task :: #task{},Result :: success | {fail, Reason}, CallBackArgs :: any()),
-    CallBackFun = fun(Task, Result, _) -> io:format("~0p --------------> ~0p~n", [Result, Task]) end,
+start_workflow(Workflow, ClientInfoList) ->
+%%        IMEI = <<"202002261804000">>,
+    start_all_simulator(Workflow,ClientInfoList).
+
+start_all_simulator( #work_flow{simulator_config = SimulatorConfig, task_list = TaskList} = Workflow,
+    [ClientInfo | ClientInfoList])->
+    CallBackFun = call_back(),
     CallBackArg = ignore,
-    RegisterTask = #task{action = register},
-    AutoObserveTask2 = #task{index = 30, action = auto_observe, args = 5000},
-    AutoObserveTask3 = #task{index = 1900, action = auto_observe, args = 5000},
-    AutoObserveTask4 = #task{index = 408, action = auto_observe, args = 5000},
-    PublishTask = #task{action = publish, args = <<"{\"str_data\":\"112233\"}">>},
-    DeRegisterTask = #task{action = de_register},
-    CloseTask = #task{action = close},
-    TaskList = [
-        RegisterTask,
-        AutoObserveTask2,
-        AutoObserveTask3,
-        AutoObserveTask4,
-        PublishTask,
-        DeRegisterTask,
-        CloseTask
-    ],
-    Args =
-        [
-            {socket, new},
-            {imei, IMEI},
-            {host, Host},
-            {port, Port},
-            {task_callback, {CallBackFun, CallBackArg}},
-            {task_list, TaskList}
+    StartArgs = [
+        {task_callback, {CallBackFun, CallBackArg}},
+        {task_list, TaskList},
+        {socket, new},
+        {imei, ClientInfo}
         ],
-    supervisor:start_child(?SERVER, [Args]).
+    supervisor:start_child(?SERVER, [lists:append(SimulatorConfig, StartArgs)]),
+    start_all_simulator(Workflow, ClientInfoList).
+
+
+call_back()->
+%%     todo counter
+    fun
+        (#task{action = Action,index = _Index, args = _Args}, Result, _CallBackArgs) ->
+            io:format("~0p ~0p~n", [Action, Result]);
+        (task_list_over, _, _) ->
+            io:format("~0p~n", [task_list_over]);
+        (Task, Result, Args) ->
+            io:format("~0p ~0p ~0p~n", [Task, Result, Args])
+    end.

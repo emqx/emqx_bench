@@ -79,6 +79,7 @@ do_init([], State) -> State.
 working(internal, start, #coap_state{task_list = [Task | TaskList]} = State) ->
     execute_task(Task, State#coap_state{task_list = TaskList});
 working(internal, start, #coap_state{task_list = []} = State) ->
+    task_callback(State, task_list_over, execute),
     {next_state, working, State};
 working(Event, EventContext, State) -> handle_event(Event, EventContext, State).
 
@@ -127,11 +128,14 @@ execute_task(#task{action = close} = Task, State) ->
     task_callback(State, Task, success),
     {stop, {shutdown, command}, State};
 execute_task(#task{action = new_mei, args = Args}, State) ->
-    {ok, working, do_init(Args, State), [{next_event, internal, start}]};
-execute_task(#task{action = auto_observe, args = Timeout} = Task, State) ->
+    {next_state, working, do_init(Args, State), [{next_event, internal, start}]};
+execute_task(#task{action = auto_observe} = Task, State) ->
     task_callback(State, Task, execute),
     {next_state, wait_message, State#coap_state{sampler = auto_observe_sampler(Task)},
-        [{state_timeout, Timeout, {Timeout, 1, no_request}}]};
+        [{state_timeout, ?ACK_TIMEOUT, {?ACK_TIMEOUT, 1, no_request}}]};
+execute_task(#task{action = publish} = Task, #coap_state{token_19_0_0 = undefined} = State) ->
+    task_callback(State, Task, {fail, auto_observe_19_0_0_fail}),
+    {next_state, working, State};
 execute_task(Task, State) ->
     task_callback(State, Task, execute),
     CoAPMessage = build_message(Task, State),
@@ -139,11 +143,13 @@ execute_task(Task, State) ->
     send_request(CoAPMessage, State#coap_state{sampler = Sampler}).
 
 -spec task_callback(#coap_state{}, #task{}, execute | success | {fail, Reason :: term()})-> ignore.
-task_callback(#coap_state{task_callback = undefined}, _Task, _Result) -> ok;
 task_callback(#coap_state{task_callback = {Function, Args}}, Task, Result) ->
     try Function(Task, Result, Args), ignore
     catch _:_  -> ignore
-    end.
+    end;
+task_callback(#coap_state{task_callback = undefined}, _Task, _Result) -> ignore;
+task_callback(#coap_state{task_callback = _}, _Task, _Result) -> ignore.
+
 
 find_sampler(#task{action = register} = Task)    -> method_sampler(Task, ?CREATED);
 find_sampler(#task{action = de_register} = Task) -> method_sampler(Task, ?DELETED);
@@ -152,16 +158,18 @@ find_sampler(#task{action = publish} = Task)     -> method_sampler(Task, ?EMPTY)
 method_sampler(Task, Method)->
     fun
         (#coap_message{id = MsgID, method = AckMethod}, #coap_state{current_request_id = MsgID} = State) ->
-            ExecuteResult = case AckMethod =:= Method of
-                                true -> success;
-                                false -> {fail, AckMethod}
-                            end,
-            task_callback(State, Task, ExecuteResult),
-            {next_state, working, State, [{state_timeout, cancel}, {next_event, internal, start}]};
+            case AckMethod =:= Method of
+                true ->
+                    task_callback(State, Task, success),
+                    {next_state, working, State, [{state_timeout, cancel}, {next_event, internal, start}]};
+                false ->
+                    task_callback(State, Task, {fail, AckMethod}),
+                    {next_state, working, State, [{state_timeout, cancel}]}
+            end;
         (CoAPMessage, _State) when is_record(CoAPMessage, coap_message) -> keep_state_and_data;
         (message_time_out, State) ->
             task_callback(State, Task, {fail, message_time_out}),
-            {next_state, working, State, [{next_event, internal, start}]}
+            {next_state, working, State, [{state_timeout, cancel}]}
     end.
 
 auto_observe_sampler(Task) ->
@@ -175,7 +183,7 @@ auto_observe_sampler(Task) ->
             end;
         (message_time_out, State) ->
             task_callback(State, Task, {fail, auto_observe_timeout}),
-            {next_state, working, State, [{next_event, internal, start}]};
+            {next_state, working, State, [{state_timeout, cancel}]};
         (_, _) -> keep_state_and_data
     end.
 

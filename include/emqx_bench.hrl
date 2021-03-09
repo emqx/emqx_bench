@@ -12,17 +12,10 @@
 {
     test_id             :: atom(),
     protocol            :: atom(),
-    simulator_info      ,  %% #simulator_info{}
-    task_list           :: list()
+    task_list           :: list(),
+    simulator_config    :: term()
 }
 ).
-
--record(simulator_info,
-{
-    csv_file_path       :: string(),
-    start_index         :: integer(),
-    end_index           :: integer()
-}).
 
 -record(task,
 {
