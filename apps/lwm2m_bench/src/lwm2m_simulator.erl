@@ -48,7 +48,7 @@ code_change(_OldVsn, StateName, State = #coap_state{}, _Extra) -> {ok, StateName
 
 init(Args) ->
     {ok, working, do_init(Args, #coap_state{}), [{next_event, internal, start}]}.
-
+do_init([], State) -> State;
 do_init([{imei, IMEI} | Args], State) -> do_init(Args, State#coap_state{imei = IMEI});
 do_init([{host, Host} | Args], State) -> do_init(Args, State#coap_state{host = Host});
 do_init([{port, Port} | Args], State) -> do_init(Args, State#coap_state{port = Port});
@@ -64,23 +64,22 @@ do_init([{data_type, _} | Args], State) -> do_init(Args, State#coap_state{data_t
 do_init([{task_list, TaskList} | Args], State) -> do_init(Args, State#coap_state{task_list = TaskList});
 do_init([{task_callback, CallBack} | Args], State) -> do_init(Args, State#coap_state{task_callback = CallBack});
 
-do_init([{socket, Socket} | Args], State) when is_port(Socket) -> do_init(Args, State#coap_state{socket = Socket});
 do_init([{socket, keep} | Args], State) -> do_init(Args, State);
 do_init([{socket, new} | Args], State) ->
 %%   {ok, Sock} = gen_udp:open(0, [{ip, {192,168,1,120}}, binary, {active, false}, {reuseaddr, false}]),
     {ok, Socket} = gen_udp:open(0, [binary]),
     do_init(Args, State#coap_state{socket = Socket});
+do_init([{socket, Socket} | Args], State) when is_port(Socket) -> do_init(Args, State#coap_state{socket = Socket});
 
-do_init([{_, _} | Args], State) -> do_init(Args, State);
-do_init([], State) -> State.
+do_init([{_, _} | Args], State) -> do_init(Args, State).
 %%--------------------------------------------------------------------------------
 %% state function
 %%--------------------------------------------------------------------------------
-working(internal, start, #coap_state{task_list = [Task | TaskList]} = State) ->
-    execute_task(Task, State#coap_state{task_list = TaskList});
 working(internal, start, #coap_state{task_list = []} = State) ->
     task_callback(State, task_list_over, execute),
     {next_state, working, State};
+working(internal, start, #coap_state{task_list = [Task | TaskList]} = State) ->
+    execute_task(Task, State#coap_state{task_list = TaskList});
 working(Event, EventContext, State) -> handle_event(Event, EventContext, State).
 
 wait_message(state_timeout, {AckTimeout, LastTimes, CoAPMessage}, State) when LastTimes > 1 ->

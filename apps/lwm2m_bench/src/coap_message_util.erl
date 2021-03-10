@@ -44,10 +44,9 @@ encode(_Data) -> {error, not_support}.
 encode_options(Options) ->
     SortOption = fun(#option{code = Code1}, #option{code = Code2}) -> Code2 >= Code1 end,
     list_to_binary(encode_options(lists:sort(SortOption, Options), 0, [])).
+encode_options([], _LastOptionCode, Result) -> Result;
 encode_options([Option = #option{code = Code} | Tail], LastOptionCode, Result) ->
-    encode_options(Tail, Code, Result ++ [encode_option(LastOptionCode, Option)]);
-encode_options([], _LastOptionCode, Result) ->
-    Result.
+    encode_options(Tail, Code, Result ++ [encode_option(LastOptionCode, Option)]).
 encode_option(LastOptionCode, #option{value = Value} = Option) when is_integer(Value) ->
     encode_option(LastOptionCode, Option#option{value = binary:encode_unsigned(Value)});
 encode_option(LastOptionCode, #option{code = Code, value = Value}) ->
@@ -98,23 +97,23 @@ decode_delta_len(Delta, <<DeltaTail:16, Tail/binary>>)     when Delta == 14 -> {
 get_uri_path(#coap_message{options = Options}) -> {ok, get_uri_path(Options, "")};
 get_uri_path(_) -> {error, un_support}.
 
+get_uri_path([], Result) -> Result;
 get_uri_path([#option{name = uri_path, value = Value} | Tail], Result) ->
     get_uri_path(Tail, list_to_binary([Result, "/", Value]));
 get_uri_path([#option{name = _OtherOption, value = _Value} | Tail], Result) ->
-    get_uri_path(Tail, Result);
-get_uri_path([], Result) -> Result.
+    get_uri_path(Tail, Result).
 
 get_option_param(#coap_message{options = Options} = CoAPMessage, Key, DataType)
     when is_record(CoAPMessage, coap_message) ->
     {ok, get_option_param(Options, Key, DataType, [])};
 get_option_param(_Data, _Key, _DataType) -> {error, un_support}.
 
+get_option_param([], _Key, _DataType, Result) -> lists:reverse(Result);
 get_option_param([Data | Tail], Key, DataType, Result) ->
     case check_data_key(Data, Key) of
         {ok, Value} -> get_option_param(Tail, Key, DataType, [trans_data_type(Value, DataType) | Result]);
         error       -> get_option_param(Tail, Key, DataType, Result)
-    end;
-get_option_param([], _Key, _DataType, Result) -> lists:reverse(Result).
+    end.
 
 check_data_key({Key, Value}, Key)         -> {ok, Value};
 check_data_key({_OtherKey, _Value}, _Key) -> error;

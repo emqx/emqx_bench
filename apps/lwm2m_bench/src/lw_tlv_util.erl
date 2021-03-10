@@ -14,11 +14,11 @@
 
 -spec encode(list()) -> binary().
 encode(TLVList) when is_list(TLVList) -> encode(TLVList,[]).
+encode([], Result)-> list_to_binary(Result);
 encode([#tlv{type = TypeCode, identifier = ID, value = Value} | Tail], Result)
     when is_binary(Value) -> encode(Tail, Result ++ [ encode_tlv(TypeCode,ID,Value)]);
 encode([#tlv{type = TypeCode, identifier = ID, value = Value} | Tail], Result)
-    when is_record(Value, tlv) or is_list(Value) -> encode(Tail, Result ++ [ encode_tlv(TypeCode, ID, encode(Value))]);
-encode([], Result)-> list_to_binary(Result).
+    when is_record(Value, tlv) or is_list(Value) -> encode(Tail, Result ++ [ encode_tlv(TypeCode, ID, encode(Value))]).
 encode_tlv(TypeCode, ID, Value )->
     {IDFlag, IDBinary} = encode_id(ID),
     {LengthFlag, LengthBinary} = encode_length(Value),
@@ -34,8 +34,7 @@ encode_length(Value) when size(Value) =< 16#FFFF      -> L = size(Value), {2#100
 encode_length(Value) when size(Value) =< 16#FFFFFF    -> L = size(Value), {2#11000    ,     << L:24 >>}.
 
 -spec decode(binary()) -> list().
-decode(Data) when is_binary(Data) ->
-    decode_tlv(Data, []).
+decode(Data) when is_binary(Data) -> decode_tlv(Data, []).
 decode_tlv(<<TypeCode:2, IDFlag:1, LengthFlag:5, Data/binary>>, Result) ->
     ID_ = decode_id_size(IDFlag),
     %%  should be like
