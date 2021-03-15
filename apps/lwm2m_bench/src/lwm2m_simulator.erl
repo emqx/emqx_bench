@@ -17,6 +17,7 @@
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
 -export([working/3, wait_message/3]).
+-export([bootstrap/1, bootstrap_sm9/2, bootstrap_sm2/2]).
 -export([register/1, de_register/1, update_register/1, publish/2, close/1, new_imei/3]).
 
 -record(coap_state, {
@@ -150,6 +151,9 @@ task_callback(#coap_state{task_callback = undefined}, _Task, _Result) -> ignore;
 task_callback(#coap_state{task_callback = _}, _Task, _Result) -> ignore.
 
 
+find_sampler(#task{action = bootstrap} = Task)     -> bootstrap_sampler(Task);
+find_sampler(#task{action = bootstrap_sm9} = Task) -> bootstrap_sampler(Task);
+find_sampler(#task{action = bootstrap_sm2} = Task) -> bootstrap_sampler(Task);
 find_sampler(#task{action = register} = Task)    -> method_sampler(Task, ?CREATED);
 find_sampler(#task{action = de_register} = Task) -> method_sampler(Task, ?DELETED);
 find_sampler(#task{action = publish} = Task)     -> method_sampler(Task, ?EMPTY).
@@ -186,9 +190,47 @@ auto_observe_sampler(Task) ->
         (_, _) -> keep_state_and_data
     end.
 
+bootstrap_sampler(Task)->
+    fun
+        (#coap_message{type = ?ACK, method = ?CHANGED}, State) ->
+            {keep_state, State,[{state_timeout, cancel},
+                {state_timeout, ?ACK_TIMEOUT, {?ACK_TIMEOUT, 1, no_request}}]};
+        (#coap_message{type = ?CON, method = ?PUT, payload = Payload} = CoAPMessage, State) ->
+            AckMessage = lwm2m_message_util:changed_ack(CoAPMessage),
+            send(AckMessage, State),
+            lw_tlv_util:decode(Payload),
+            TLVList = try lw_tlv_util:decode(Payload) of
+                      DecodeResult -> DecodeResult
+                      catch _:_ -> decode_fail end,
+            io:format("Bootstrap Write ~0p, ~0p~n", [CoAPMessage, TLVList]),
+            {keep_state, State,[{state_timeout, cancel},
+                {state_timeout, ?ACK_TIMEOUT, {?ACK_TIMEOUT, 1, no_request}}]};
+        (#coap_message{type = ?CON, method = ?POST} = CoAPMessage, State) ->
+            AckMessage = lwm2m_message_util:changed_ack(CoAPMessage),
+            send(AckMessage, State),
+            task_callback(State, Task, success),
+            {next_state, working, State, [{state_timeout, cancel}, {next_event, internal, start}]};
+        (message_time_out, State) ->
+            task_callback(State, Task, {fail, auto_observe_timeout}),
+            {next_state, working, State, [{state_timeout, cancel}]};
+        (_, _) -> keep_state_and_data
+    end.
+
 %%--------------------------------------------------------------------------------
 %%  simulator action
 %%--------------------------------------------------------------------------------
+-spec bootstrap(pid()) -> any().
+bootstrap(Pid) ->
+    gen_statem:cast(Pid, {new_task, #task{action = bootstrap}}).
+
+-spec bootstrap_sm9(pid(), binary()) -> any().
+bootstrap_sm9(Pid, PubKey) ->
+    gen_statem:cast(Pid, {new_task, #task{action = bootstrap_sm9, args = PubKey}}).
+
+-spec bootstrap_sm2(pid(), binary()) -> any().
+bootstrap_sm2(Pid, PubKey) ->
+    gen_statem:cast(Pid, {new_task, #task{action = bootstrap_sm2, args = PubKey}}).
+
 -spec register(pid()) -> any().
 register(Pid) ->
     gen_statem:cast(Pid, {new_task, #task{action = register}}).
@@ -264,6 +306,13 @@ handle_auto_observe(#coap_message{id = MessageID, token = Token} = CoAPMessage, 
 %%--------------------------------------------------------------------------------
 build_message(#task{action = Action, args = Args}, State) ->
     build_message(Action, Args, State).
+build_message(bootstrap, _Args, #coap_state{message_id_index = MessageID, imei = IMEI}) ->
+    lwm2m_message_util:bootstrap(MessageID, IMEI);
+build_message(bootstrap_sm9, PubKey, #coap_state{message_id_index = MessageID, imei = IMEI}) ->
+    lwm2m_message_util:bootstrap_sm9(MessageID, IMEI, PubKey);
+build_message(bootstrap_sm2, PubKey, #coap_state{message_id_index = MessageID, imei = IMEI}) ->
+    lwm2m_message_util:bootstrap_sm2(MessageID, IMEI, PubKey);
+
 build_message(register, _Args,
     #coap_state{
         message_id_index = MessageID,

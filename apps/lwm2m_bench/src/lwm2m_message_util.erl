@@ -11,8 +11,11 @@
 -include("coap.hrl").
 -include("tlv.hrl").
 %% function(any()) -> #coap_messahe{}
+-export([simple_ack/2, changed_ack/1]).
+
 -export([   bootstrap/2,
-            bootstrap_sm9/3]).
+            bootstrap_sm9/3,
+            bootstrap_sm2/3]).
 
 -export([   register/4,
             register_standard_module/4,
@@ -33,6 +36,17 @@
 %%-----------------------------------------------------------------
 %% message build function
 %%-----------------------------------------------------------------
+changed_ack(RequestMessage) ->
+    simple_ack(RequestMessage, ?CHANGED).
+
+simple_ack(#coap_message{id = ID}, AckMethod) ->
+    #coap_message{
+        type    = ?ACK,
+        method  = AckMethod,
+        id      = ID,
+        token   = <<>>,
+        options = []
+    }.
 
 bootstrap(MessageID, IMEI) ->
     Options = [
@@ -47,10 +61,16 @@ bootstrap(MessageID, IMEI) ->
         options = Options
     }.
 bootstrap_sm9(MessageID, IMEI, PubKey) ->
+    bootstrap_with_key(MessageID, IMEI, <<"2">>, PubKey).
+
+bootstrap_sm2(MessageID, IMEI, PubKey) ->
+    bootstrap_with_key(MessageID, IMEI, <<"6">>, PubKey).
+
+bootstrap_with_key(MessageID, IMEI, KeyType, PubKey) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"bs">>),
-        coap_message_util:build_option(?URI_QUERY, <<"ktype=2">>),
         coap_message_util:build_option(?URI_QUERY, <<"ep=", IMEI/binary>>),
+        coap_message_util:build_option(?URI_QUERY, <<"ktype=", KeyType/binary>>),
         coap_message_util:build_option(?URI_QUERY, <<"epub=" , PubKey/binary>>)
     ],
     #coap_message{
