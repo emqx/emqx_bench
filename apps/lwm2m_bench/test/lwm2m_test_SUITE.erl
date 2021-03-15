@@ -20,8 +20,8 @@ all() -> [simple_test].
 
 simple_test() ->
     lwm2m_bench_app:start(a, a),
-    Host = "221.229.214.202",
-%%    Host = "221.229.214.201",
+%%    Host = "221.229.214.202",
+    Host = "180.101.145.55",
     Port = 5683,
     IMEI = <<"202002261804000">>,
     %%                      fun( Task :: #task{},Result :: success | {fail, Reason}, CallBackArgs :: any()),

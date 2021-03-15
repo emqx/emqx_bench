@@ -58,7 +58,8 @@ bootstrap(MessageID, IMEI) ->
         method  = ?POST,
         id      = MessageID,
         token   = <<>>,
-        options = Options
+        options = Options,
+        payload = ?NO_PAYLOAD
     }.
 bootstrap_sm9(MessageID, IMEI, PubKey) ->
     bootstrap_with_key(MessageID, IMEI, <<"2">>, PubKey).
@@ -78,7 +79,8 @@ bootstrap_with_key(MessageID, IMEI, KeyType, PubKey) ->
         method  = ?POST,
         id      = MessageID,
         token   = <<>>,
-        options = Options
+        options = Options,
+        payload = ?NO_PAYLOAD
     }.
 
 register(MessageID, IMEI, LifeTime, Payload) ->
