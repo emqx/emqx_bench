@@ -192,9 +192,14 @@ auto_observe_sampler(Task) ->
 
 bootstrap_sampler(Task)->
     fun
-        (#coap_message{type = ?ACK, method = ?CHANGED}, State) ->
+        (#coap_message{id = MsgID, type = ?ACK, method = ?CHANGED},
+            #coap_state{current_request_id = MsgID} = State) ->
             {keep_state, State,[{state_timeout, cancel},
                 {state_timeout, ?ACK_TIMEOUT, {?ACK_TIMEOUT, 1, no_request}}]};
+        (#coap_message{id = MsgID, type = ?ACK, method = AckMethod},
+            #coap_state{current_request_id = MsgID} = State) ->
+            task_callback(State, Task, {fail, AckMethod}),
+            {next_state, working, State, [{state_timeout, cancel}]};
         (#coap_message{type = ?CON, method = ?PUT, payload = Payload} = CoAPMessage, State) ->
             AckMessage = lwm2m_message_util:changed_ack(CoAPMessage),
             send(AckMessage, State),
@@ -282,6 +287,10 @@ handle_message(#coap_message{type = ?CON, method = ?GET} = CoAPMessage, State) -
         {ok, NewState} -> {keep_state, NewState};
         _ -> keep_state_and_data
     end;
+handle_message(#coap_message{type = ?CON} = CoAPMessage, State) ->
+    AckMessage = lwm2m_message_util:simple_ack(CoAPMessage, ?EMPTY),
+    send(AckMessage, State),
+    keep_state_and_data;
 handle_message(#coap_message{type = ?RESET}, _State) ->
     %% todo
     all_fail,
