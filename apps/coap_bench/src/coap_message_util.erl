@@ -41,6 +41,31 @@ encode(#coap_message{
     {ok, Result};
 encode(_Data) -> {error, not_support}.
 
+%%------------------------------------------------------------------
+%% decode
+%%------------------------------------------------------------------
+-spec decode(binary()) -> {ok, #coap_message{}} | {error, any()}.
+decode(<<?VERSION:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, MessageID:16, Token:TKL/bytes,
+    Tail/binary>>) ->
+    {Options, Payload} = decode_options_payload(Tail),
+    CoAPMessage = #coap_message{
+                        type    = get_type_by_code(TypeCode),
+                        method  = get_method_by_code(MethodCode, MethodCodeDetail),
+                        id      = MessageID,
+                        token   = Token,
+                        options = Options,
+                        payload = Payload
+                    },
+    {ok, CoAPMessage};
+decode(_Data) -> {error, un_support_packet}.
+
+
+%%------------------------------------------------------------------
+%%  internal function
+%%------------------------------------------------------------------
+
+%%------------------------------------------------------------------
+%% encode function
 encode_options(Options) ->
     SortOption = fun(#option{code = Code1}, #option{code = Code2}) -> Code2 >= Code1 end,
     list_to_binary(encode_options(lists:sort(SortOption, Options), 0, [])).
@@ -63,23 +88,7 @@ encode_payload(?NO_PAYLOAD) -> <<>>;
 encode_payload(_) -> encode_payload(?NO_PAYLOAD).
 
 %%------------------------------------------------------------------
-%% decode
-%%------------------------------------------------------------------
--spec decode(binary()) -> {ok, #coap_message{}} | {error, any()}.
-decode(<<?VERSION:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, MessageID:16, Token:TKL/bytes,
-    Tail/binary>>) ->
-    {Options, Payload} = decode_options_payload(Tail),
-    CoAPMessage = #coap_message{
-                        type    = get_type_by_code(TypeCode),
-                        method  = get_method_by_code(MethodCode, MethodCodeDetail),
-                        id      = MessageID,
-                        token   = Token,
-                        options = Options,
-                        payload = Payload
-                    },
-    {ok, CoAPMessage};
-decode(_Data) -> {error, un_support_packet}.
-
+%% decode function
 decode_options_payload(Data) -> decode_options_payload(Data, 0, []).
 
 decode_options_payload(<<>>,                              _LastOptionCode, OptionList)  -> {OptionList, ?NO_PAYLOAD};
@@ -111,15 +120,15 @@ get_option_param(_Data, _Key, _DataType) -> {error, un_support}.
 
 get_option_param([], _Key, _DataType, Result) -> lists:reverse(Result);
 get_option_param([Data | Tail], Key, DataType, Result) ->
-    case check_data_key(Data, Key) of
+    case check_option(Data, Key) of
         {ok, Value} -> get_option_param(Tail, Key, DataType, [trans_data_type(Value, DataType) | Result]);
         error       -> get_option_param(Tail, Key, DataType, Result)
     end.
 
-check_data_key({Key, Value}, Key)         -> {ok, Value};
-check_data_key({_OtherKey, _Value}, _Key) -> error;
-check_data_key(#option{name = Key, value = Value}, Key)         -> {ok, Value};
-check_data_key(#option{name = _OtherKey, value = _Value}, _Key) -> error.
+check_option({Key, Value}, Key)         -> {ok, Value};
+check_option({_OtherKey, _Value}, _Key) -> error;
+check_option(#option{name = Key, value = Value}, Key)         -> {ok, Value};
+check_option(#option{name = _OtherKey, value = _Value}, _Key) -> error.
 
 trans_data_type(Data, binary) when is_binary(Data)  -> Data;
 trans_data_type(Data, binary) when is_integer(Data) -> binary:encode_unsigned(Data);
@@ -128,14 +137,12 @@ trans_data_type(Data, integer) when is_binary(Data) -> binary:decode_unsigned(Da
 
 %%------------------------------------------------------------------
 %%  build function
-%%------------------------------------------------------------------
 
 build_option(Option, Value) when is_record(Option, option) ->  Option#option{value = Value};
 build_option(Code  , Value) when is_integer(Code) -> build_option(get_option_by_code(Code), Value).
 
 %%------------------------------------------------------------------
 %% parse function
-%%------------------------------------------------------------------
 
 %% code => message type
 get_code_by_type(?CON)    -> 0;
@@ -147,7 +154,6 @@ get_type_by_code(2#00)    -> ?CON;
 get_type_by_code(2#01)    -> ?NON;
 get_type_by_code(2#10)    -> ?ACK;
 get_type_by_code(2#11)    -> ?RESET.
-
 %% code => method
 get_method_by_code(0, 0 ) -> ?EMPTY;
 get_method_by_code(0, 1 ) -> ?GET;
@@ -175,7 +181,6 @@ get_method_by_code(5, 2 ) -> ?BAD_GATEWAY;
 get_method_by_code(5, 3 ) -> ?SERVICE_UNAVAILABLE;
 get_method_by_code(5, 4 ) -> ?GATEWAY_TIMEOUT;
 get_method_by_code(5, 5 ) -> ?PROXYING_NOT_SUPPORTED.
-
 %% code => option def
 get_option_by_code(0 )    -> ?RESERVED;
 get_option_by_code(1 )    -> ?IF_MATCH;

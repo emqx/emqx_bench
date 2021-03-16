@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(lwm2m_message_util).
 -author("DDDHuang").
--include("coap.hrl").
+-include_lib("coap_bench/include/coap.hrl").
 -include("tlv.hrl").
 %% function(any()) -> #coap_messahe{}
 -export([simple_ack/2, changed_ack/1]).

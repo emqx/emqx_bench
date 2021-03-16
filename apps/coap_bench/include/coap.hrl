@@ -16,7 +16,7 @@
 {
     type        ::      atom(),
     method ,            %% #method{}
-    id          ::      integer(),
+    id = -1     ::      integer(),
     token       ::      binary(),
     options     ::      list(), %% [ #option{} ]
     %%  no_payload   =>      no 0xFF payload mark
