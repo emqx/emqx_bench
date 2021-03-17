@@ -27,15 +27,21 @@ init([]) ->
     {ok, {SupFlags, child_spec()}}.
 
 %% internal functions
+%%child_spec() ->
+%%    [#{ id          => lwm2m_simulator,
+%%        start       => {lwm2m_simulator, start_link, []},
+%%        restart     => temporary,
+%%        shutdown    => brutal_kill,
+%%        type        => worker}].
+%% todo new lw sim [base_coap] need test
 child_spec() ->
-    [#{ id          => lwm2m_simulator,
-        start       => {lwm2m_simulator, start_link, []},
+    [#{ id          => base_coap,
+        start       => {base_coap, start_link, []},
         restart     => temporary,
         shutdown    => brutal_kill,
         type        => worker}].
 
 start_workflow(Workflow, ClientInfoList) ->
-%%        IMEI = <<"202002261804000">>,
     start_all_simulator(Workflow,ClientInfoList).
 
 start_all_simulator( #work_flow{simulator_config = SimulatorConfig, task_list = TaskList} = Workflow,
