@@ -41,7 +41,7 @@
             deregister/1]).
 
 start_link(Args) ->
-    LWArgs = [{message_callback, message_callback / 2, do_init(Args,#lw_state{})}],
+    LWArgs = [{message_callback, {message_callback/2, do_init(Args, #lw_state{})}}],
     gen_statem:start_link(?COAP, Args ++ LWArgs, []).
 
 do_init([], State) -> State;
@@ -61,7 +61,7 @@ do_init([{_, _} | Args], State) -> do_init(Args, State).
 
 message_callback(bootstrap_sm2, #lw_state{imei = IMEI, sm2_public_key = PubKey}) ->
     {ok, lwm2m_message_util2:bootstrap_sm2(IMEI, PubKey)};
-message_callback(bootstrap_sm2, #lw_state{imei = IMEI, sm9_public_key = PubKey}) ->
+message_callback(bootstrap_sm9, #lw_state{imei = IMEI, sm9_public_key = PubKey}) ->
     {ok, lwm2m_message_util2:bootstrap_sm9(IMEI, PubKey)};
 message_callback(register, #lw_state{imei = IMEI, lifetime = LifeTime, register_payload = Payload}) ->
     {ok, lwm2m_message_util2:register(IMEI,LifeTime,Payload)};
