@@ -71,15 +71,15 @@ working(cast, {send, Message}, State) ->
     do_send(Message, State),
     keep_state_and_data;
 working(cast, Command, State) -> cast_command(Command, State);
-working({call, From}, Message, State) -> call_command(From, Message, State);
+working({call, From}, Command, State) -> call_command(From, Command, State);
 working(Event, Content, State) -> hand_event(Event, Content, State).
 
-waiting(state_timeout, {request_timeout, CoAPMessage, Time, Retry}, State) when Retry < ?MAX_RETRANSMIT ->
+waiting(state_timeout, {request_timeout, CoAPMessage, Time, Retry}, State) when Retry < (?MAX_RETRANSMIT - 1) ->
     do_send(CoAPMessage, State),
     NextTimeout = Time * (Retry + 1),
     {keep_state, State, [{state_timeout, NextTimeout, {request_timeout, CoAPMessage, NextTimeout, Retry + 1}}]};
-waiting(state_timeout, {request_timeout, #coap_message{id = ID} = RequestCoAPMessage, _Time, Retry},
-    #coap_state{request = RequestMap} = State) when Retry >= ?MAX_RETRANSMIT ->
+waiting(state_timeout, {request_timeout, #coap_message{id = ID} = RequestCoAPMessage, _Time, _Retry},
+    #coap_state{request = RequestMap} = State) ->
     From = maps:get(ID, RequestMap),
     erase({request, ID}),
     {next_state, working, State, [{reply, From, {request_timeout, RequestCoAPMessage}}]};
@@ -110,13 +110,15 @@ cast_command(_, _State) ->
     keep_state_and_data.
 
 
-call_command(From, {callback_request, Args}, #coap_state{callback_module = Mod, callback_loop = CLoop} = State)->
-    try Mod:build_messgae(Args, CLoop) of
+call_command(From, {request, build_message, Args}, #coap_state{callback_module = Mod, callback_loop = Loop} = State)->
+    io:format("Mod ~0p Args ~0p Loop ~0p~n", [Mod, Args, Loop]),
+    erlang:apply(Mod, build_message, [Args, Loop]),
+    try erlang:apply(Mod, build_message, [Args, Loop]) of
         {ok, CoAPMessage, NewLoop} ->
             call_command(From, {request, CoAPMessage},
                 State#coap_state{callback_loop = NewLoop});
-        _ -> {keep_state, State, [{reply, From, {fail, message_callback_error}}]}
-    catch _:_ -> {keep_state, State, [{reply, From, {fail, message_callback_error}}]}
+        _ -> {keep_state, State, [{reply, From, {fail, {message_callback_error, build_message_bad_return}}}]}
+    catch E:R -> {keep_state, State, [{reply, From, {fail, {E,R}}}]}
     end;
 call_command(From, {request, CoAPMessage}, State)->
     do_request(CoAPMessage, From, State);
@@ -128,23 +130,25 @@ udp_message(_Sock, _PeerIP, _PeerPortNo, Packet, State) ->
 udp_message(Packet, #coap_state{request = RequestMap, callback_module = Mod, callback_loop = Loop} = State) ->
     try coap_message_util:decode(Packet) of
         {ok, #coap_message{id = ID} = CoAPMessage} ->
-            case maps:get(ID, RequestMap) of
+            case maps:find(ID, RequestMap) of
                 {ok, From} ->
-                    NewMap = maps:remove(ID,RequestMap),
+                    NewMap = maps:remove(ID, RequestMap),
                     {next_state, working, State#coap_state{request = NewMap},
-                        [{reply, From, {fail, timeout}}, {state_timeout, cancel}]};
+                        [{reply, From, {ok, CoAPMessage}}, {state_timeout, cancel}]};
                 _ ->
                     NewState = synchronize_state_message_id(CoAPMessage, State),
-                    try Mod:handle_message(CoAPMessage, Loop) of
-                        {ok, NewLoop} ->
-                            {next_state, working, NewState#coap_state{callback_loop = NewLoop},
-                                [{state_timeout, cancel}]};
-                        _ ->
-                            {next_state, working, NewState, [{state_timeout, cancel}]}
-                    catch _:_ -> {next_state, working, NewState, [{state_timeout, cancel}]}
-                    end
+                    NewLoop = apply_callback_handle_message(Mod, CoAPMessage, Loop),
+                    {keep_state, NewState#coap_state{callback_loop = NewLoop}}
             end
     catch _:_  -> keep_state_and_data end.
+
+apply_callback_handle_message(undefined, _, Loop)-> Loop;
+apply_callback_handle_message(Mod, CoAPMessage, Loop)->
+    try Mod:handle_message(CoAPMessage, Loop) of
+        {ok, NewLoop} -> NewLoop;
+        _ -> Loop
+    catch _:_ -> {ok, Loop}
+    end.
 
 
 %%--------------------------------------------------------------------------------
@@ -153,8 +157,8 @@ udp_message(Packet, #coap_state{request = RequestMap, callback_module = Mod, cal
 request(Pid, CoAPMessage) ->
     try gen_statem:call(Pid, {request, CoAPMessage}, cal_max_timeout())
     catch _:_ -> {fail, timeout} end.
-request(Pid, message_callback, CallbackArgs) ->
-    try gen_statem:call(Pid, {request, message_callback, CallbackArgs}, cal_max_timeout())
+request(Pid, build_message, CallbackArgs) ->
+    try gen_statem:call(Pid, {request, build_message, CallbackArgs}, cal_max_timeout())
     catch _:_ -> {fail, timeout} end.
 
 send(Pid, CoAPMessage) ->

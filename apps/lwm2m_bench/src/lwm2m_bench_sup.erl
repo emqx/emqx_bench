@@ -13,6 +13,8 @@
 
 -export([start_workflow/2]).
 
+-export([simple_test/0]).
+
 -include_lib("emqx_bench/include/emqx_bench.hrl").
 
 -define(SERVER, ?MODULE).
@@ -27,16 +29,9 @@ init([]) ->
     {ok, {SupFlags, child_spec()}}.
 
 %% internal functions
-%%child_spec() ->
-%%    [#{ id          => lwm2m_simulator,
-%%        start       => {lwm2m_simulator, start_link, []},
-%%        restart     => temporary,
-%%        shutdown    => brutal_kill,
-%%        type        => worker}].
-%% todo new lw sim [base_coap] need test
 child_spec() ->
-    [#{ id          => base_coap,
-        start       => {base_coap, start_link, []},
+    [#{ id          => lwm2m_simulator,
+        start       => {lwm2m_simulator, start_link, []},
         restart     => temporary,
         shutdown    => brutal_kill,
         type        => worker}].
@@ -46,10 +41,8 @@ start_workflow(Workflow, ClientInfoList) ->
 
 start_all_simulator( #work_flow{simulator_config = SimulatorConfig, task_list = TaskList} = Workflow,
     [ClientInfo | ClientInfoList])->
-    CallBackFun = call_back(),
-    CallBackArg = ignore,
+%%    CallBackArg = ignore,
     StartArgs = [
-        {task_callback, {CallBackFun, CallBackArg}},
         {task_list, TaskList},
         {socket, new},
         {imei, ClientInfo}
@@ -58,13 +51,18 @@ start_all_simulator( #work_flow{simulator_config = SimulatorConfig, task_list = 
     start_all_simulator(Workflow, ClientInfoList).
 
 
-call_back()->
-%%     todo counter
-    fun
-        (#task{action = Action,index = _Index, args = _Args}, Result, _CallBackArgs) ->
-            io:format("~0p ~0p~n", [Action, Result]);
-        (task_list_over, _, _) ->
-            io:format("~0p~n", [task_list_over]);
-        (Task, Result, Args) ->
-            io:format("~0p ~0p ~0p~n", [Task, Result, Args])
-    end.
+simple_test() ->
+    lwm2m_bench_app:start(a, a),
+    Host = "221.229.214.202",
+    Port = 5683,
+    IMEI = <<"202103201518000">>,
+    Args =
+        [
+            {socket, new},
+            {imei, IMEI},
+            {host, Host},
+            {port, Port},
+            {data_type, json}
+        ],
+    {ok, Pid} = supervisor:start_child(?SERVER, [Args]),
+    base_coap:register(Pid).

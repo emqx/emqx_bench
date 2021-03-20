@@ -13,25 +13,25 @@
 %% function(any()) -> #coap_messahe{}
 -export([simple_ack/2, changed_ack/1]).
 
--export([   bootstrap/2,
-            bootstrap_sm9/3,
-            bootstrap_sm2/3]).
+-export([   bootstrap/1,
+            bootstrap_sm9/2,
+            bootstrap_sm2/2]).
 
--export([   register/4,
-            register_standard_module/4,
-            update_register/3,
-            deregister/2]).
+-export([   register/3,
+            register_standard_module/3,
+            update_register/2,
+            deregister/1]).
 
 -export([   response_auto_observe_4_0_8/2,
             response_auto_observe_3_0/2,
             response_auto_observe_19_0_0/2]).
 
--export([   publish/4,
+-export([   publish/3,
             publish_binary_payload/2]).
 
 -export([   response_command_ack/2,
-            response_command_binary/4,
-            response_command_json/3]).
+            response_command_binary/3,
+            response_command_json/2]).
 
 %%-----------------------------------------------------------------
 %% message build function
@@ -48,7 +48,7 @@ simple_ack(#coap_message{id = ID}, AckMethod) ->
         options = []
     }.
 
-bootstrap(MessageID, IMEI) ->
+bootstrap(IMEI) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"bs">>),
         coap_message_util:build_option(?URI_QUERY, <<"ep=", IMEI/binary>>)
@@ -56,18 +56,18 @@ bootstrap(MessageID, IMEI) ->
     #coap_message{
         type    = ?CON,
         method  = ?POST,
-        id      = MessageID,
+        
         token   = <<>>,
         options = Options,
         payload = ?NO_PAYLOAD
     }.
-bootstrap_sm9(MessageID, IMEI, PubKey) ->
-    bootstrap_with_key(MessageID, IMEI, <<"2">>, PubKey).
+bootstrap_sm9(IMEI, PubKey) ->
+    bootstrap_with_key(IMEI, <<"2">>, PubKey).
 
-bootstrap_sm2(MessageID, IMEI, PubKey) ->
-    bootstrap_with_key(MessageID, IMEI, <<"6">>, PubKey).
+bootstrap_sm2(IMEI, PubKey) ->
+    bootstrap_with_key(IMEI, <<"6">>, PubKey).
 
-bootstrap_with_key(MessageID, IMEI, KeyType, PubKey) ->
+bootstrap_with_key(IMEI, KeyType, PubKey) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"bs">>),
         coap_message_util:build_option(?URI_QUERY, <<"ep=", IMEI/binary>>),
@@ -77,13 +77,12 @@ bootstrap_with_key(MessageID, IMEI, KeyType, PubKey) ->
     #coap_message{
         type    = ?CON,
         method  = ?POST,
-        id      = MessageID,
         token   = <<>>,
         options = Options,
         payload = ?NO_PAYLOAD
     }.
 
-register(MessageID, IMEI, LifeTime, Payload) ->
+register(IMEI, LifeTime, Payload) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_QUERY, <<"lwm2m=1.0">>),
@@ -94,13 +93,12 @@ register(MessageID, IMEI, LifeTime, Payload) ->
     #coap_message{
         type    = ?CON,
         method  = ?POST,
-        id      = MessageID,
         token   = <<>>,
         options = Options,
         payload = Payload
     }.
 
-register_standard_module(MessageID, IMEI, LifeTime, Payload) ->
+register_standard_module(IMEI, LifeTime, Payload) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_QUERY, <<"lwm2m=1.0">>),
@@ -118,13 +116,12 @@ register_standard_module(MessageID, IMEI, LifeTime, Payload) ->
     #coap_message{
         type    = ?CON,
         method  = ?POST,
-        id      = MessageID,
         token   = <<>>,
         options = Options,
         payload = Payload
     }.
 
-update_register(MessageID, LifeTime, IMEI) ->
+update_register(LifeTime, IMEI) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_PATH,  IMEI),
@@ -134,13 +131,12 @@ update_register(MessageID, LifeTime, IMEI) ->
     #coap_message{
         type    = ?CON,
         method  = ?POST,
-        id      = MessageID,
         token   = <<>>,
         options = Options,
         payload = ?NO_PAYLOAD
     }.
 
-deregister(MessageID, IMEI) ->
+deregister(IMEI) ->
     Options = [
         coap_message_util:build_option(?URI_PATH,  <<"rd">>),
         coap_message_util:build_option(?URI_PATH,  IMEI)
@@ -148,7 +144,6 @@ deregister(MessageID, IMEI) ->
     #coap_message{
         type    = ?CON,
         method  = ?DELETE,
-        id      = MessageID,
         token   = <<>>,
         options = Options,
         payload = ?NO_PAYLOAD
@@ -222,7 +217,7 @@ publish_binary_payload(DataSetID, Data) ->
     DataLen = size(Data),
     <<16#2:8, DataSetID:16, DataLen:16, Data/binary>>.
 
-publish(ProductDataType, MessageID, Token, Payload) ->
+publish(ProductDataType, Token, Payload) ->
     ContentForMate = case ProductDataType of
         json            -> ?APPLICATION_VNDOMALWM2M_JSON;
         binary          -> ?APPLICATION_OCTET_STREAM;
@@ -238,7 +233,6 @@ publish(ProductDataType, MessageID, Token, Payload) ->
     #coap_message{
         type    = ?CON,
         method  = ?CONTENT,
-        id      = MessageID,
         token   = Token,
         options = Options,
         payload = Payload
@@ -253,12 +247,12 @@ response_command_ack(MessageID, Token) ->
         options = [],
         payload = ?NO_PAYLOAD
     }.
-response_command_binary(MessageID, Token, DatasetID, Payload) ->
+response_command_binary(Token, DatasetID, Payload) ->
     BuildPayload = <<16#86:2, DatasetID:2, (size(Payload)):2, Payload/binary>>,
-    response_command(MessageID, Token, BuildPayload).
-response_command_json(MessageID, Token, Payload) ->
-    response_command(MessageID, Token, Payload).
-response_command(MessageID, Token, Payload) ->
+    response_command(Token, BuildPayload).
+response_command_json(Token, Payload) ->
+    response_command(Token, Payload).
+response_command(Token, Payload) ->
     Options = [
         coap_message_util:build_option(?URI_OBSERVE, <<0:8>>),
         coap_message_util:build_option(?URI_PATH, <<"19">>),
@@ -268,7 +262,6 @@ response_command(MessageID, Token, Payload) ->
     #coap_message{
         type    = ?CON,
         method  = ?CONTENT,
-        id      = MessageID,
         token   = Token,
         options = Options,
         payload = Payload
