@@ -54,18 +54,24 @@ do_init([{data_type, _} | Args], State) -> do_init(Args, State#lw_state{data_typ
 
 do_init([{task_list, TaskList} | Args], State) -> do_init(Args, State#lw_state{task_list = TaskList});
 do_init([{task_callback, CallBack} | Args], State) -> do_init(Args, State#lw_state{task_callback = CallBack});
-
 do_init([{_, _} | Args], State) -> do_init(Args, State).
-
+%%--------------------------------------------------------------------------------
+%%  api
+%%--------------------------------------------------------------------------------
 bootstrap_sm2(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 bootstrap_sm9(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 register(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 register_standard_module(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 publish(Pid,Payload) -> lw_request(Pid, {?FUNCTION_NAME, Payload}).
 deregister(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
-
+%%--------------------------------------------------------------------------------
+%%  internal function
+%%--------------------------------------------------------------------------------
 lw_request(Pid, Args) -> coap_simulator:request(Pid, build_message, Args).
 
+%%--------------------------------------------------------------------------------
+%%  coap simulator callback
+%%--------------------------------------------------------------------------------
 build_message(bootstrap_sm2, #lw_state{imei = IMEI, sm2_public_key = PubKey} = State) ->
     {ok, lwm2m_message_util2:bootstrap_sm2(IMEI, PubKey), State};
 build_message(bootstrap_sm9, #lw_state{imei = IMEI, sm2_public_key = PubKey} = State) ->
@@ -78,10 +84,7 @@ build_message({publish, Payload}, #lw_state{data_type = ProductDataType, token_1
     {ok, lwm2m_message_util2:publish(ProductDataType, Token, Payload), State};
 build_message(deregister, #lw_state{imei = IMEI} = State) ->
     {ok, lwm2m_message_util2:deregister(IMEI), State};
-build_message(Args, State) ->
-    io:format("???????  ~0p   ~0p", [Args ,State]),
-    {error, no_message}.
-
+build_message(_Args, _State) -> {error, no_message}.
 
 handle_message(#coap_message{id = MessageID, token = Token} = CoAPMessage, State) ->
     {ok, Path} = coap_message_util:get_uri_path(CoAPMessage),
@@ -97,6 +100,3 @@ handle_message(#coap_message{id = MessageID, token = Token} = CoAPMessage, State
     coap_simulator:request(self(), ResponseCoAPMessage),
     {ok, NewState};
 handle_message(_Message, Loop) -> {ok, Loop}.
-
-
-
