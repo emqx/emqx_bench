@@ -30,7 +30,7 @@
             publish_binary_payload/2]).
 
 -export([   response_command_ack/2,
-            response_command_binary/3,
+            response_command_binary/4,
             response_command_json/2]).
 
 %%-----------------------------------------------------------------
@@ -39,13 +39,16 @@
 changed_ack(RequestMessage) ->
     simple_ack(RequestMessage, ?CHANGED).
 
-simple_ack(#coap_message{id = ID}, AckMethod) ->
+simple_ack(#coap_message{id = ID, token = Token} = CONMessage, AckMethod) when is_record(CONMessage, coap_message) ->
+    simple_ack(ID, Token, AckMethod).
+simple_ack(ID, Token, AckMethod) ->
     #coap_message{
         type    = ?ACK,
         method  = AckMethod,
         id      = ID,
-        token   = <<>>,
-        options = []
+        token   = Token,
+        options = [],
+        payload = ?NO_PAYLOAD
     }.
 
 bootstrap(IMEI) ->
@@ -247,8 +250,8 @@ response_command_ack(MessageID, Token) ->
         options = [],
         payload = ?NO_PAYLOAD
     }.
-response_command_binary(Token, DatasetID, Payload) ->
-    BuildPayload = <<16#86:2, DatasetID:2, (size(Payload)):2, Payload/binary>>,
+response_command_binary(Token, TaskID, DatasetID, Payload) ->
+    BuildPayload = <<16#86:2, DatasetID:2, TaskID:4, (size(Payload)):16, Payload/binary>>,
     response_command(Token, BuildPayload).
 response_command_json(Token, Payload) ->
     response_command(Token, Payload).

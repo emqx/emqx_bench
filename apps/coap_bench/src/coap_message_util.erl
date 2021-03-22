@@ -84,8 +84,7 @@ encode_delta_len(DeltaOrLength) when DeltaOrLength < 269 -> {13, <<(DeltaOrLengt
 encode_delta_len(DeltaOrLength)                          -> {14, <<(DeltaOrLength - 269):16>>}.
 
 encode_payload(Payload) when is_binary(Payload) -> <<16#FF:8, Payload/binary>>;
-encode_payload(?NO_PAYLOAD) -> <<>>;
-encode_payload(_) -> encode_payload(?NO_PAYLOAD).
+encode_payload(?NO_PAYLOAD) -> <<>>.
 
 %%------------------------------------------------------------------
 %% decode function

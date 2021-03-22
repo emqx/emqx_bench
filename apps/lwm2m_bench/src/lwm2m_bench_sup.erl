@@ -58,11 +58,12 @@ simple_test() ->
     IMEI = <<"202103201518000">>,
     Args =
         [
-            {socket, new},
             {imei, IMEI},
             {host, Host},
             {port, Port},
+            {socket, new},
             {data_type, json}
         ],
     {ok, Pid} = supervisor:start_child(?SERVER, [Args]),
-    base_coap:register(Pid).
+    erlang:register(lw, Pid),
+    lwm2m_simulator:register(lw).

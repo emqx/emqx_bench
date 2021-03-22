@@ -24,3 +24,9 @@ clean:
 distclean:
 	@rm -rf _build
 	@rm -f data/app.*.config data/vm.*.args rebar.lock
+
+dialyzer:
+	$(REBAR) dialyzer
+
+cover:
+	$(REBAR) cover

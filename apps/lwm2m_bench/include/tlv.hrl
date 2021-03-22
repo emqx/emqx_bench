@@ -2,7 +2,7 @@
 {
     type        ::      integer(),
     identifier  ::      integer(),
-    length      ::      integer(),
+    length      ::      integer() | undefined,
     value       ::      binary() | integer() | list() %%  tlv list
 }).
 

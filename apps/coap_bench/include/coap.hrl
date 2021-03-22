@@ -34,7 +34,7 @@
 {
     name        ::      atom(),
     code        ::      integer(),
-    value       ::      binary()
+    value       ::      binary() | integer() | undefined
 }).
 %% type def
 -define( CON        , con   ).

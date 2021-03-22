@@ -15,9 +15,9 @@
 
 -define(COAP, coap_simulator).
 -record(lw_state, {
-    imei                                :: binary(),
-    sm2_public_key                      :: binary(),
-    sm9_public_key                      :: binary(),
+    imei                = <<"">>        :: binary(),
+    sm2_public_key      = <<"">>        :: binary(),
+    sm9_public_key      = <<"">>        :: binary(),
     data_type           = json          :: pass_through | json      | binary,
     lifetime            = <<"300">>     :: binary(),
     register_payload    = <<"</>;rt=\"oma.lwm2m\";ct=11543,<3/0>,<19/0>">>,
@@ -73,30 +73,34 @@ lw_request(Pid, Args) -> coap_simulator:request(Pid, build_message, Args).
 %%  coap simulator callback
 %%--------------------------------------------------------------------------------
 build_message(bootstrap_sm2, #lw_state{imei = IMEI, sm2_public_key = PubKey} = State) ->
-    {ok, lwm2m_message_util2:bootstrap_sm2(IMEI, PubKey), State};
+    {ok, lwm2m_message_util:bootstrap_sm2(IMEI, PubKey), State};
 build_message(bootstrap_sm9, #lw_state{imei = IMEI, sm2_public_key = PubKey} = State) ->
-    {ok, lwm2m_message_util2:bootstrap_sm9(IMEI, PubKey), State};
+    {ok, lwm2m_message_util:bootstrap_sm9(IMEI, PubKey), State};
 build_message(register, #lw_state{imei = IMEI, lifetime = LifeTime, register_payload = Payload} = State) ->
-    {ok, lwm2m_message_util2:register(IMEI, LifeTime, Payload), State};
+    {ok, lwm2m_message_util:register(IMEI, LifeTime, Payload), State};
 build_message(register_standard_module, #lw_state{imei = IMEI, lifetime = LifeTime, register_payload = Payload} = State) ->
-    {ok, lwm2m_message_util2:register_standard_module(IMEI, LifeTime, Payload), State};
+    {ok, lwm2m_message_util:register_standard_module(IMEI, LifeTime, Payload), State};
 build_message({publish, Payload}, #lw_state{data_type = ProductDataType, token_19_0_0 = Token} = State) ->
-    {ok, lwm2m_message_util2:publish(ProductDataType, Token, Payload), State};
+    {ok, lwm2m_message_util:publish(ProductDataType, Token, Payload), State};
 build_message(deregister, #lw_state{imei = IMEI} = State) ->
-    {ok, lwm2m_message_util2:deregister(IMEI), State};
+    {ok, lwm2m_message_util:deregister(IMEI), State};
 build_message(_Args, _State) -> {error, no_message}.
 
-handle_message(#coap_message{id = MessageID, token = Token} = CoAPMessage, State) ->
+handle_message(#coap_message{type = ?CON, id = MessageID, token = Token} = CoAPMessage, State) ->
+    io:format("<<<<  ~0p~n",[CoAPMessage]),
     {ok, Path} = coap_message_util:get_uri_path(CoAPMessage),
     {ResponseCoAPMessage, NewState} = case Path of
         <<"/3/0">> ->
-            {lwm2m_message_util2:response_auto_observe_3_0(MessageID, Token), State};
+            {lwm2m_message_util:response_auto_observe_3_0(MessageID, Token), State};
         <<"/19/0/0">> ->
-            {lwm2m_message_util2:response_auto_observe_19_0_0(MessageID, Token), State#lw_state{token_19_0_0 = Token}};
+            {lwm2m_message_util:response_auto_observe_19_0_0(MessageID, Token), State#lw_state{token_19_0_0 = Token}};
         <<"/4/0/8">> ->
-            {lwm2m_message_util2:response_auto_observe_3_0(MessageID, Token), State};
+            {lwm2m_message_util:response_auto_observe_3_0(MessageID, Token), State};
+        <<"19/1/0">> ->
+            {lwm2m_message_util:simple_ack(CoAPMessage, ?CHANGED), State};
         _ -> ignore
     end,
-    coap_simulator:request(self(), ResponseCoAPMessage),
+    coap_simulator:send(self(), ResponseCoAPMessage),
     {ok, NewState};
 handle_message(_Message, Loop) -> {ok, Loop}.
+

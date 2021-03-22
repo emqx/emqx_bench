@@ -27,25 +27,24 @@
 -define(SERVER, ?MODULE).
 
 -record(coap_state, {
-    socket                              :: gen_udp:socket(),
-    host                                :: binary()     | tuple     | inet:ip_address(),
-    port                                :: integer(),
-    current_request_id                  :: term(), %% request message
+    socket                              :: gen_udp:socket() | undefined,
+    host                = {127, 0, 0, 1}:: binary() | inet:ip_address(),
+    port                = 5683          :: integer(),
     message_id_index    = 0             :: integer(),
     task_list           = []            :: list(),
 %%    module must have callback message_build(Args, Loop) -> {ok, Message, NewLoop} | any()
 %%    and handle_message(CoAPMessage, Loop) -> {ok, NewLoop} | Ignore :: any()
-    callback_module     = undefined     :: term(),
-    callback_loop       = undefined     :: term(),
+    callback_module                     :: term(),
+    callback_loop                       :: term(),
 %%    map #{ RequestMessageID => From }
-    request                             :: term()
+    request = maps:new()                :: term()
 }).
 
 start_link(Args) ->
     gen_statem:start_link(?MODULE, Args, []).
 
 init(Args) ->
-    {ok, working, do_init(Args, #coap_state{request = maps:new()})}.
+    {ok, working, do_init(Args, #coap_state{})}.
 
 do_init([], State) -> State;
 do_init([{host, Host} | Args], State) -> do_init(Args, State#coap_state{host = Host});
@@ -111,7 +110,6 @@ cast_command(_, _State) ->
 
 
 call_command(From, {request, build_message, Args}, #coap_state{callback_module = Mod, callback_loop = Loop} = State)->
-    io:format("Mod ~0p Args ~0p Loop ~0p~n", [Mod, Args, Loop]),
     erlang:apply(Mod, build_message, [Args, Loop]),
     try erlang:apply(Mod, build_message, [Args, Loop]) of
         {ok, CoAPMessage, NewLoop} ->
@@ -197,7 +195,6 @@ do_request(CoAPMessage, From, #coap_state{request = RequestMap} = State) ->
 %%--------------------------------------------------------------------------------
 %%  udp send api,will not synchronize message id
 %%--------------------------------------------------------------------------------
--spec do_send(#coap_message{}, #coap_state{}) -> #coap_state{}.
 do_send(CoAPMessage, #coap_state{socket = Socket, host = Host, port = Port} = State) ->
     io:format("send  >>> ~0p~n", [CoAPMessage]),
     {ok, Package} = coap_message_util:encode(CoAPMessage),
