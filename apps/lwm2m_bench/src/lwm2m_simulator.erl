@@ -41,6 +41,19 @@ start_link(Args) ->
     LWArgs = [{callback_module, ?MODULE}, {callback_loop, do_init(Args, #lw_state{})}],
     gen_statem:start_link(?COAP, Args ++ LWArgs, []).
 
+%%--------------------------------------------------------------------------------
+%%  api
+%%--------------------------------------------------------------------------------
+bootstrap_sm2(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
+bootstrap_sm9(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
+register(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
+register_standard_module(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
+publish(Pid,Payload) -> lw_request(Pid, {?FUNCTION_NAME, Payload}).
+deregister(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
+
+%%--------------------------------------------------------------------------------
+%%  internal function
+%%--------------------------------------------------------------------------------
 do_init([], State) -> State;
 do_init([{imei, IMEI} | Args], State) -> do_init(Args, State#lw_state{imei = IMEI});
 do_init([{register_payload, Payload} | Args], State) -> do_init(Args, State#lw_state{register_payload = Payload});
@@ -55,18 +68,7 @@ do_init([{data_type, _} | Args], State) -> do_init(Args, State#lw_state{data_typ
 do_init([{task_list, TaskList} | Args], State) -> do_init(Args, State#lw_state{task_list = TaskList});
 do_init([{task_callback, CallBack} | Args], State) -> do_init(Args, State#lw_state{task_callback = CallBack});
 do_init([{_, _} | Args], State) -> do_init(Args, State).
-%%--------------------------------------------------------------------------------
-%%  api
-%%--------------------------------------------------------------------------------
-bootstrap_sm2(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
-bootstrap_sm9(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
-register(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
-register_standard_module(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
-publish(Pid,Payload) -> lw_request(Pid, {?FUNCTION_NAME, Payload}).
-deregister(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
-%%--------------------------------------------------------------------------------
-%%  internal function
-%%--------------------------------------------------------------------------------
+
 lw_request(Pid, Args) -> coap_simulator:request(Pid, build_message, Args).
 
 %%--------------------------------------------------------------------------------
@@ -95,7 +97,7 @@ handle_message(#coap_message{type = ?CON, id = MessageID, token = Token} = CoAPM
         <<"/19/0/0">> ->
             {lwm2m_message_util:response_auto_observe_19_0_0(MessageID, Token), State#lw_state{token_19_0_0 = Token}};
         <<"/4/0/8">> ->
-            {lwm2m_message_util:response_auto_observe_3_0(MessageID, Token), State};
+            {lwm2m_message_util:response_auto_observe_4_0_8(MessageID, Token), State};
         <<"19/1/0">> ->
             {lwm2m_message_util:simple_ack(CoAPMessage, ?CHANGED), State};
         _ -> ignore

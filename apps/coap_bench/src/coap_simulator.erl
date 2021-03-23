@@ -20,7 +20,7 @@
 
 -export([working/3, waiting/3]).
 
--export([request/2, request/3, send/2, wait/3, wait/4, new_callback/2]).
+-export([request/2, request/3, send/2]).
 
 -include("coap.hrl").
 
@@ -161,17 +161,6 @@ request(Pid, build_message, CallbackArgs) ->
 
 send(Pid, CoAPMessage) ->
     gen_statem:cast(Pid, {send, CoAPMessage}).
-
-wait(Pid, MessageSampler, SamplerArgs)->
-    wait(Pid, MessageSampler, SamplerArgs, 5000).
-wait(Pid, MessageSampler, SamplerArgs, Timeout)->
-    try gen_statem:call(Pid, {wait, MessageSampler, SamplerArgs, Timeout}, Timeout)
-    catch _:_ -> {fail, timeout} end.
-
-new_callback(Pid, Callback)->
-    try  gen_statem:call(Pid, {new_callback, Callback}, 200)
-    catch _:_ -> {fail, timeout} end.
-
 
 %%--------------------------------------------------------------------------------
 %%  internal function

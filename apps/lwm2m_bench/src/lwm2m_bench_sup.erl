@@ -52,7 +52,7 @@ start_all_simulator( #work_flow{simulator_config = SimulatorConfig, task_list = 
 
 
 simple_test() ->
-    lwm2m_bench_app:start(a, a),
+    application:start(lwm2m_bench),
     Host = "221.229.214.202",
     Port = 5683,
     IMEI = <<"202103201518000">>,

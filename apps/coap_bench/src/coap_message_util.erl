@@ -13,8 +13,6 @@
 -export([encode/1, decode/1]).
 -export([get_option_param/3, get_uri_path/1]).
 
-%%-export([get_message_id_token/1,get_message_id/1, get_token/1]).
-
 -export([build_option/2]).
 
 -include("coap.hrl").
