@@ -185,7 +185,7 @@ do_request(CoAPMessage, From, #coap_state{request = RequestMap} = State) ->
 %%  udp send api,will not synchronize message id
 %%--------------------------------------------------------------------------------
 do_send(CoAPMessage, #coap_state{socket = Socket, host = Host, port = Port} = State) ->
-    io:format("send  >>> ~0p~n", [CoAPMessage]),
+    io:format(">>>>~n  ~0p~n", [CoAPMessage]),
     {ok, Package} = coap_message_util:encode(CoAPMessage),
     gen_udp:send(Socket, Host, Port, Package),
     {keep_state, State}.

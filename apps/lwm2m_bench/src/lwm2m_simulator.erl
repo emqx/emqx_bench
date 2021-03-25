@@ -65,6 +65,9 @@ do_init([{data_type, json} | Args], State) -> do_init(Args, State#lw_state{data_
 do_init([{data_type, binary} | Args], State) -> do_init(Args, State#lw_state{data_type = binary});
 do_init([{data_type, _} | Args], State) -> do_init(Args, State#lw_state{data_type = pass_through});
 
+do_init([{sm2_public_key, Data} | Args], State) -> do_init(Args, State#lw_state{sm2_public_key = Data});
+do_init([{sm9_public_key, Data} | Args], State) -> do_init(Args, State#lw_state{sm9_public_key = Data});
+
 do_init([{task_list, TaskList} | Args], State) -> do_init(Args, State#lw_state{task_list = TaskList});
 do_init([{task_callback, CallBack} | Args], State) -> do_init(Args, State#lw_state{task_callback = CallBack});
 do_init([{_, _} | Args], State) -> do_init(Args, State).
@@ -89,7 +92,7 @@ build_message(deregister, #lw_state{imei = IMEI} = State) ->
 build_message(_Args, _State) -> {error, no_message}.
 
 handle_message(#coap_message{type = ?CON, id = MessageID, token = Token} = CoAPMessage, State) ->
-    io:format("<<<<  ~0p~n",[CoAPMessage]),
+    io:format("<<<<~n  ~0p~n",[CoAPMessage]),
     {ok, Path} = coap_message_util:get_uri_path(CoAPMessage),
     {ResponseCoAPMessage, NewState} = case Path of
         <<"/3/0">> ->
