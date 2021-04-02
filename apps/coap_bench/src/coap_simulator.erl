@@ -15,7 +15,7 @@
 -export([start_link/1]).
 
 %% gen_statem callbacks
--export([init/1, format_status/2, terminate/3,
+-export([init/1, terminate/3,
     code_change/4, callback_mode/0]).
 
 -export([working/3, waiting/3]).
@@ -28,19 +28,17 @@
 -define(SERVER, ?MODULE).
 
 -record(coap_state, {
-    socket :: gen_udp:socket() | undefined,
-    host = {127, 0, 0, 1} :: binary() | inet:ip_address(),
-    port = 5683 :: integer(),
-    message_id_index = 0 :: integer(),
-    task_list = [] :: list(),
-    task_callback :: term(),%% {M, F, A}
-    task_loop :: term(),%% {M, F, A}
+    socket                      :: gen_udp:socket() | undefined,
+    host = {127, 0, 0, 1}       :: binary() | inet:ip_address(),
+    port = 5683                 :: integer(),
+    message_id_index = 0        :: integer(),
+    task_list = []              :: list(),
 %%    module must have callback message_build(Args, Loop) -> {ok, Message, NewLoop} | any()
 %%    and handle_message(CoAPMessage, Loop) -> {ok, NewLoop} | Ignore :: any()
-    callback_module :: term(),
-    callback_loop :: term(),
-%%    map #{ RequestMessageID => From }
-    request = maps:new() :: term()
+    callback_module             :: term(),
+    callback_loop               :: term(),
+%%    map #{ RequestMessageID => RequestCallback }
+    request = maps:new()        :: term()
 }).
 
 start_link(Args) ->
@@ -65,10 +63,9 @@ init(Args) ->
 
 do_init({host, Host}, State)            -> State#coap_state{host = Host};
 do_init({port, Port}, State)            -> State#coap_state{port = Port};
-do_init({task_list, TaskList}, State)   -> State#coap_state{task_list = TaskList};
 do_init({socket, new}, State)           -> State#coap_state{socket = new_socket()};
 do_init({socket, keep}, State)          -> State;
-do_init({socket, Socket}, State) when is_port(Socket)-> State#coap_state{socket = Socket};
+do_init({socket, Socket}, State) when is_port(Socket) -> State#coap_state{socket = Socket};
 do_init({callback, Module, InitArgs}, State) ->
     try Module:init(InitArgs) of
         CallbackLoop -> State#coap_state{callback_module = Module, callback_loop = CallbackLoop}
@@ -78,9 +75,6 @@ do_init(_, State) -> State.
 new_socket() -> {ok, Socket} = gen_udp:open(0, [binary]), Socket.
 
 callback_mode() -> [state_functions].
-format_status(_Opt, [_PDict, _StateName, _State]) ->
-    Status = some_term,
-    Status.
 terminate(_Reason, _StateName, _State = #coap_state{socket = Socket}) ->
     try gen_udp:close(Socket)
     catch _:_ -> ok
@@ -107,6 +101,7 @@ waiting(state_timeout, {request_timeout, #coap_message{id = ID} = RequestCoAPMes
     #coap_state{request = RequestMap} = State) ->
     RequestCallBack = maps:get(ID, RequestMap),
     erase({request, ID}),
+    apply_callback_response(RequestCoAPMessage, State),
     try RequestCallBack({request_timeout, RequestCoAPMessage})
     catch _:_ -> ignore end,
     {next_state, working, State};
@@ -127,10 +122,12 @@ cast_command({send, CoapMessage}, State) ->
     keep_state_and_data;
 cast_command(_, _State) ->
     keep_state_and_data.
+
 call_command(From, {new_task, Task}, State) when is_record(Task, task) ->
     call_command(From, {new_task, [Task]}, State);
 call_command(From, {new_task, Tasks}, #coap_state{task_list = TaskList} = State) when is_list(Tasks) ->
     {keep_state, State#coap_state{task_list = TaskList ++ Tasks}, [{reply, From, ok}, {next_event, internal, execute_task}]};
+
 call_command(From, {request, build_message, Args}, #coap_state{callback_module = Mod, callback_loop = Loop} = State) ->
     try erlang:apply(Mod, build_message, [Args, Loop]) of
         {ok, CoAPMessage, NewLoop} ->
@@ -140,30 +137,55 @@ call_command(From, {request, build_message, Args}, #coap_state{callback_module =
     catch E:R -> {keep_state, State, [{reply, From, {fail, {E, R}}}]}
     end;
 call_command(From, {request, CoAPMessage}, State) ->
-    Fun = fun(ResponseCoapMessage) -> gen_statem:reply(From, ResponseCoapMessage) end,
+    Fun = fun(_, ResponseCoapMessage) ->
+            gen_statem:reply(From, ResponseCoapMessage),
+            {ok, ignore}
+          end,
     do_request(CoAPMessage, Fun, State);
 call_command(From, _, State) ->
     {keep_state, State, [{reply, From, un_support_call}]}.
 
 udp_message(_Sock, _PeerIP, _PeerPortNo, Packet, State) ->
     udp_message(Packet, State).
-udp_message(Packet, #coap_state{request = RequestMap, callback_module = Mod, callback_loop = Loop} = State) ->
+udp_message(Packet, State) ->
     try coap_message_util:decode(Packet) of
-        {ok, #coap_message{id = ID} = CoAPMessage} ->
-            case maps:find(ID, RequestMap) of
-                {ok, RequestCallFun} ->
-                    NewMap = maps:remove(ID, RequestMap),
-                    %% gen_statem:reply/1 or other function
-                    try RequestCallFun(CoAPMessage)
-                    catch _:_ -> ignore end,
-                    {next_state, working, State#coap_state{request = NewMap},
-                        [{state_timeout, cancel}]};
-                _ ->
-                    NewState = synchronize_state_message_id(CoAPMessage, State),
-                    NewLoop = apply_callback_handle_message(Mod, CoAPMessage, Loop),
-                    {keep_state, NewState#coap_state{callback_loop = NewLoop}}
-            end
-    catch _:_ -> keep_state_and_data end.
+        {ok, CoAPMessage} ->
+            apply_callback_response(CoAPMessage, State);
+        _ ->
+            %% decode error
+            keep_state_and_data
+    catch _:_ ->
+        keep_state_and_data
+    end.
+
+apply_callback_response({request_timeout, RequestMessage}, State)->
+%%    todo request  timeout
+    ok;
+apply_callback_response(#coap_message{id = ID} = ResponseMessage,
+    #coap_state{request = RequestMap, callback_module = CallbackMod, callback_loop = CallbackLoop} = State) ->
+    case maps:find(ID, RequestMap) of
+        {ok, CallbackFun} ->
+            NewMap = maps:remove(ID, RequestMap),
+            {NewState, Action} =
+                try CallbackFun(ResponseMessage, CallbackLoop) of
+                    {ok, ignore} ->
+                        {State, []};
+                    {ok, NewLoop} ->
+                        {State#coap_state{callback_loop = NewLoop}, []};
+                    {ok, next_task, NewLoop} ->
+                        {State#coap_state{callback_loop = NewLoop}, [{next_event, internal, execute_task}]};
+                    _ ->
+                        {State, []}
+                catch _:_ ->
+                    {State, []}
+                end,
+            {next_state, working, NewState#coap_state{request = NewMap}, [{state_timeout, cancel}] ++ Action};
+        _ ->
+            NewState = synchronize_state_message_id(ResponseMessage, State),
+            NewLoop = apply_callback_handle_message(CallbackMod, ResponseMessage, CallbackLoop),
+            {keep_state, NewState#coap_state{callback_loop = NewLoop}}
+    end.
+
 
 apply_callback_handle_message(undefined, _, Loop) -> Loop;
 apply_callback_handle_message(Mod, CoAPMessage, Loop) ->
@@ -185,7 +207,9 @@ execute_task(#coap_state{task_list = [#task{action = request, args = Args} = Tas
     callback_module = Mod, callback_loop = Loop} = State) ->
     try erlang:apply(Mod, build_message, [Args, Loop]) of
         {ok, CoAPMessage, NewLoop} ->
-            Fun = fun(ResponseCoapMessage) -> Mod:task_execute(Task, ResponseCoapMessage) end,
+            Fun = fun(CallbackLoop ,ResponseCoapMessage) ->
+                    Mod:task_response(Task, ResponseCoapMessage, CallbackLoop)
+                  end,
             do_request(CoAPMessage, Fun, State#coap_state{callback_loop = NewLoop, task_list = Tasks});
         _ -> {keep_state, State, [{next_event, internal, execute_task}]}
     catch _:_ ->
@@ -198,6 +222,8 @@ execute_task(#coap_state{task_list = [_ | Tasks]} = State) ->
 %%--------------------------------------------------------------------------------
 %%  send request ,will synchronize message id
 %%--------------------------------------------------------------------------------
+%% RequestCallBack :: fun(CoAPMessage :: coap_message{}, CallBackLoop :: term()) ->
+%%      {ok, ignore} | {ok, NewLoop :: term()} | {ok, next_task, NewLoop} | Ignore :: any()
 do_request(CoAPMessage, RequestCallBack, #coap_state{request = RequestMap} = State) ->
     {#coap_message{id = ID} = NewMessage, NewState} = synchronize_message_id(CoAPMessage, State),
     NewMap = maps:put(ID, RequestCallBack, RequestMap),

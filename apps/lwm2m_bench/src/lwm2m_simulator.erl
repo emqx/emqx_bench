@@ -12,6 +12,7 @@
 %% API
 -export([]).
 -include_lib("coap_bench/include/coap.hrl").
+-include_lib("emqx_bench/include/emqx_bench.hrl").
 
 -define(COAP, coap_simulator).
 -record(lw_state, {
@@ -114,4 +115,6 @@ handle_message(#coap_message{type = ?CON, method = ?PUT} = CoAPMessage, State) -
     coap_simulator:send(self(), ResponseCoAPMessage),
     {ok, NewState};
 handle_message(_Message, Loop) -> {ok, Loop}.
+
+task_response(#task{action = }) ->
 
