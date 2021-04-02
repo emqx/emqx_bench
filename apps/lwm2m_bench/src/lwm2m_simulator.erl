@@ -35,10 +35,10 @@
             publish/2,
             deregister/1]).
 
--export([build_message/2, handle_message/2]).
+-export([init/1, build_message/2, handle_message/2]).
 
 start_link(Args) ->
-    LWArgs = [{callback_module, ?MODULE}, {callback_loop, do_init(Args, #lw_state{})}],
+    LWArgs = [{callback, ?MODULE, Args}],
     gen_statem:start_link(?COAP, Args ++ LWArgs, []).
 
 %%--------------------------------------------------------------------------------
@@ -54,23 +54,24 @@ deregister(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 %%--------------------------------------------------------------------------------
 %%  internal function
 %%--------------------------------------------------------------------------------
-do_init([], State) -> State;
-do_init([{imei, IMEI} | Args], State) -> do_init(Args, State#lw_state{imei = IMEI});
-do_init([{register_payload, Payload} | Args], State) -> do_init(Args, State#lw_state{register_payload = Payload});
-do_init([{lifetime, Lifetime} | Args], State) ->
-    do_init(Args, State#lw_state{lifetime = list_to_binary(integer_to_list(Lifetime))});
+init(Args)-> 
+    lists:foldl(fun(Arg, State) -> do_init(Arg, State) end, #lw_state{}, Args).
+do_init({imei, IMEI}, State) -> State#lw_state{imei = IMEI};
+do_init({register_payload, Payload} , State) -> State#lw_state{register_payload = Payload};
+do_init({lifetime, Lifetime} , State) ->
+    State#lw_state{lifetime = list_to_binary(integer_to_list(Lifetime))};
 
-do_init([{data_type, pass_through} | Args], State) -> do_init(Args, State#lw_state{data_type = pass_through});
-do_init([{data_type, json} | Args], State) -> do_init(Args, State#lw_state{data_type = json});
-do_init([{data_type, binary} | Args], State) -> do_init(Args, State#lw_state{data_type = binary});
-do_init([{data_type, _} | Args], State) -> do_init(Args, State#lw_state{data_type = pass_through});
+do_init({data_type, pass_through} , State) -> State#lw_state{data_type = pass_through};
+do_init({data_type, json} , State) -> State#lw_state{data_type = json};
+do_init({data_type, binary} , State) -> State#lw_state{data_type = binary};
+do_init({data_type, _} , State) -> State#lw_state{data_type = pass_through};
 
-do_init([{sm2_public_key, Data} | Args], State) -> do_init(Args, State#lw_state{sm2_public_key = Data});
-do_init([{sm9_public_key, Data} | Args], State) -> do_init(Args, State#lw_state{sm9_public_key = Data});
+do_init({sm2_public_key, Data}, State) -> State#lw_state{sm2_public_key = Data};
+do_init({sm9_public_key, Data}, State) -> State#lw_state{sm9_public_key = Data};
 
-do_init([{task_list, TaskList} | Args], State) -> do_init(Args, State#lw_state{task_list = TaskList});
-do_init([{task_callback, CallBack} | Args], State) -> do_init(Args, State#lw_state{task_callback = CallBack});
-do_init([{_, _} | Args], State) -> do_init(Args, State).
+do_init({task_list, TaskList}, State) -> State#lw_state{task_list = TaskList};
+do_init({task_callback, CallBack}, State) -> State#lw_state{task_callback = CallBack};
+do_init({_, _}, State) -> State.
 
 lw_request(Pid, Args) -> coap_simulator:request(Pid, build_message, Args).
 
@@ -91,7 +92,7 @@ build_message(deregister, #lw_state{imei = IMEI} = State) ->
     {ok, lwm2m_message_util:deregister(IMEI), State};
 build_message(_Args, _State) -> {error, no_message}.
 
-handle_message(#coap_message{type = ?CON, id = MessageID, token = Token} = CoAPMessage, State) ->
+handle_message(#coap_message{type = ?CON, method = ?GET, id = MessageID, token = Token} = CoAPMessage, State) ->
     io:format("<<<<~n  ~0p~n",[CoAPMessage]),
     {ok, Path} = coap_message_util:get_uri_path(CoAPMessage),
     {ResponseCoAPMessage, NewState} = case Path of
@@ -105,6 +106,11 @@ handle_message(#coap_message{type = ?CON, id = MessageID, token = Token} = CoAPM
             {lwm2m_message_util:simple_ack(CoAPMessage, ?CHANGED), State};
         _ -> ignore
     end,
+    coap_simulator:send(self(), ResponseCoAPMessage),
+    {ok, NewState};
+handle_message(#coap_message{type = ?CON, method = ?PUT} = CoAPMessage, State) ->
+    io:format("<<<<~n  ~0p~n",[CoAPMessage]),
+    {ResponseCoAPMessage, NewState} = {lwm2m_message_util:simple_ack(CoAPMessage, ?CHANGED), State},
     coap_simulator:send(self(), ResponseCoAPMessage),
     {ok, NewState};
 handle_message(_Message, Loop) -> {ok, Loop}.
