@@ -1,0 +1,8 @@
+{
+    "erlang.includePaths": [
+        "${workspaceFolder}/_build/",
+        "${workspaceFolder}/include/",
+        "${workspaceFolder}/_checkouts/",
+        "${workspaceFolder}/coap_bench/include/"
+    ]
+}
