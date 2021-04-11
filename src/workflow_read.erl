@@ -60,9 +60,6 @@ trans_task(TaskMapList) when is_list(TaskMapList) ->
 trans_task(TaskMap) when is_map(TaskMap) ->
     Keys = maps:keys(TaskMap),
     trans_task(Keys, TaskMap, #task{}).
-trans_task([<<"index">> = Key | Keys], TaskMap, Task) ->
-    Value = maps:get(Key, TaskMap),
-    trans_task(Keys, TaskMap, Task#task{index = Value});
 trans_task([<<"action">> = Key | Keys], TaskMap, Task) ->
     Value = binary_to_atom(maps:get(Key, TaskMap), utf8),
     trans_task(Keys, TaskMap, Task#task{action = Value});

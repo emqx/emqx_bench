@@ -19,7 +19,8 @@
 
 -record(task,
 {
-    index               :: integer(),
-    action              :: function(),
-    args                :: any()
+    index               :: integer() | undefined,
+    action              :: term(),
+    args                :: any(),
+    from                
 }).

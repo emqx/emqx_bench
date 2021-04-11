@@ -54,7 +54,7 @@ start_all_simulator( #work_flow{simulator_config = SimulatorConfig, task_list = 
 
 call_back()->
     fun
-        (#task{action = Action,index = _Index, args = _Args}, Result, _CallBackArgs) ->
+        (#task{action = Action, args = _Args}, Result, _CallBackArgs) ->
             io:format("~0p ~0p~n", [Action, Result]);
         (task_list_over, _, _) ->
             io:format("~0p~n", [task_list_over]);

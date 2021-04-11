@@ -76,7 +76,8 @@ do_init({task_list, TaskList}, State) -> State#lw_state{task_list = TaskList};
 do_init({task_callback, CallBack}, State) -> State#lw_state{task_callback = CallBack};
 do_init({_, _}, State) -> State.
 
-lw_request(Pid, Args) -> coap_simulator:request(Pid, build_message, Args).
+lw_request(Pid, Args) -> 
+    coap_simulator:request(Pid, build_message, Args).
 
 %%--------------------------------------------------------------------------------
 %%  coap simulator callback
@@ -89,6 +90,8 @@ build_message(register, #lw_state{imei = IMEI, lifetime = LifeTime, register_pay
     {ok, lwm2m_message_util:register(IMEI, LifeTime, Payload), State};
 build_message(register_standard_module, #lw_state{imei = IMEI, lifetime = LifeTime, register_payload = Payload} = State) ->
     {ok, lwm2m_message_util:register_standard_module(IMEI, LifeTime, Payload), State};
+build_message({publish, _Payload}, #lw_state{token_19_0_0 = undefined}) ->
+    {error, token_19_0_0_undefined};
 build_message({publish, Payload}, #lw_state{data_type = ProductDataType, token_19_0_0 = Token} = State) ->
     {ok, lwm2m_message_util:publish(ProductDataType, Token, Payload), State};
 build_message(deregister, #lw_state{imei = IMEI} = State) ->
@@ -96,7 +99,6 @@ build_message(deregister, #lw_state{imei = IMEI} = State) ->
 build_message(_Args, _State) -> {error, no_message}.
 
 handle_message(#coap_message{type = ?CON, method = ?GET, id = MessageID, token = Token} = CoAPMessage, State) ->
-    io:format("<<<<~n  ~0p~n",[CoAPMessage]),
     {ok, Path} = coap_message_util:get_uri_path(CoAPMessage),
     {ResponseCoAPMessage, NewState} = case Path of
         <<"/3/0">> ->
@@ -109,12 +111,11 @@ handle_message(#coap_message{type = ?CON, method = ?GET, id = MessageID, token =
             {lwm2m_message_util:simple_ack(CoAPMessage, ?CHANGED), State};
         _ -> ignore
     end,
-    coap_simulator:send(self(), ResponseCoAPMessage),
+    gen_statem:cast(self(), {send, ResponseCoAPMessage}),
     {ok, NewState};
 handle_message(#coap_message{type = ?CON, method = ?PUT} = CoAPMessage, State) ->
-    io:format("<<<<~n  ~0p~n",[CoAPMessage]),
     {ResponseCoAPMessage, NewState} = {lwm2m_message_util:simple_ack(CoAPMessage, ?CHANGED), State},
-    coap_simulator:send(self(), ResponseCoAPMessage),
+    gen_statem:cast(self(), {send, ResponseCoAPMessage}),
     {ok, NewState};
 handle_message(_Message, Loop) -> {ok, Loop}.
 

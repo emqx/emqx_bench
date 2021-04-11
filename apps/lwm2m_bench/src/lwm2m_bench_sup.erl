@@ -67,7 +67,7 @@ simple_test() ->
             {port, Port},
             {socket, new},
             {data_type, json},
-            {lifetime, 10}
+            {lifetime, 300}
         ],
     {ok, Pid} = supervisor:start_child(?SERVER, [Args]),
     Result = lwm2m_simulator:register(Pid),
