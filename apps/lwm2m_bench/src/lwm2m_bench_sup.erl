@@ -53,12 +53,12 @@ start_all_simulator(#work_flow{simulator_config = SimulatorConfig, task_list = T
 
 
 simple_test() ->
+    %% lwm2m_bench_sup:simple_test().
     application:start(lwm2m_bench),
     Port = 5683,
     Host = "221.229.214.202",
-    IMEI = <<"202103201518000">>,
+    IMEI = <<"202104092018000">>,
 %%    Host = "180.101.145.55",
-%%    IMEI = <<"202103161001999">>,
 
     Args =
         [
@@ -70,11 +70,15 @@ simple_test() ->
             {lifetime, 10}
         ],
     {ok, Pid} = supervisor:start_child(?SERVER, [Args]),
-    erlang:register(lw, Pid),
-    Result = lwm2m_simulator:register(lw),
+    Result = lwm2m_simulator:register(Pid),
     io:format("~0p~n", [Result]),
-    sleep(10),
-    io:format("logout ~0p~n", [lwm2m_simulator:deregister(lw)]).
+    sleep(2),
+    % {"serviceId":1,"str_10":"inerlang"}
+    PubAck = lwm2m_simulator:publish(Pid, jsx:encode([{<<"serviceId">>, 1}, {<<"str_10">>, <<"inerlang">>}])),
+    io:format("PubAck  ~0p~n", [PubAck]),
+    sleep(20),
+    io:format("logout ~0p~n", [lwm2m_simulator:deregister(Pid)]),
+    ok.
 
 sleep(Time) when Time > 0 ->
     timer:sleep(1 * 1000),
@@ -86,12 +90,12 @@ sleep(_Time) ->
 
 bs_sm2_test() ->
     lwm2m_bench_app:start(a, a),
-%%    Host = "221.229.214.202",
+    Host = "221.229.214.202",
 %%    Host = "180.107.140.103",
 %%    Host = "180.101.145.52",
-    Host = "180.106.148.146",
+    % Host = "180.106.148.146",
     Port = 5683,
-    IMEI = <<"622200000012345">>,
+    IMEI = <<"202104092018000">>,
 %%    IMEI = <<"622210000012345">>,
     PubKeyHex = "11017D016532DFFE2C69188E391E6362EC1499CD96A064E28F46D287BBC415D60DDF638D3E7E0309744849C0B87EB08E520E7F9951EDC4ED51FF8B6AD09D990CACF3589A690AE37E1FDE93F7B3866EE73822F729E3C7666C67989CF0B5C6FA1EB6156F2F000001198305B4A5C74FE5A4640EC30A7451AEF61EA704D3CF62666993D2745CE0BA33EF7EC1765BA5F63263BDAACD6CFAEF526DACF92BFF48900EFBB5F8724619D6FC656B42FCACFFBA8C2E7F6E7C373FA244E65E66A1AEBABD93C9ACDDB0D49C151D1B97CC3D52A52D8636A366204EB061D828DA2F0AF5552AF930964CF1707BAF67B595B2205F251B750BEFBD77ABDAD16A32182F6C890969DB6D5DD7F6FB97E6CE922B06A99CB0CD43245792681F9A100FFC1B38EC4894500819C760BC8F2E1FF42B4CCD9787CAF3F07E8F6309FDC4FAFC198BAEFEAAA498D573407DC3B1E49ACEB57968AD7A0E638CB87B78A8889A008519C6026DCF70F7F26D0557C5F18CFE550DF9AADEAD6332E9979521FBB2AD9375F4B94F9FCCB171EB5445",
     BigInteger = list_to_integer(PubKeyHex, 16),

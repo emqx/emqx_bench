@@ -39,6 +39,8 @@
 -export([init/1, build_message/2, handle_message/2]).
 
 start_link(Args) ->
+    Fun = fun()-> ok end,
+    spawn(Fun),
     LWArgs = [{callback, ?MODULE, Args}],
     gen_statem:start_link(?COAP, Args ++ LWArgs, []).
 
@@ -49,7 +51,7 @@ bootstrap_sm2(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 bootstrap_sm9(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 register(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 register_standard_module(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
-publish(Pid,Payload) -> lw_request(Pid, {?FUNCTION_NAME, Payload}).
+publish(Pid, Payload) -> lw_request(Pid, {?FUNCTION_NAME, Payload}).
 deregister(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 
 %%--------------------------------------------------------------------------------
@@ -116,5 +118,5 @@ handle_message(#coap_message{type = ?CON, method = ?PUT} = CoAPMessage, State) -
     {ok, NewState};
 handle_message(_Message, Loop) -> {ok, Loop}.
 
-task_response(#task{action = }) ->
+% task_response(Message, Task, #lw{}) ->
 

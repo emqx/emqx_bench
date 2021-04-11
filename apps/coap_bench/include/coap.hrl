@@ -80,6 +80,7 @@
 -define( VALID                          , #method{name = valid                     , code = 2,     detail = 3  }).
 -define( CHANGED                        , #method{name = changed                   , code = 2,     detail = 4  }).
 -define( CONTENT                        , #method{name = content                   , code = 2,     detail = 5  }).
+
 -define( BAD_REQUEST                    , #method{name = bad_request               , code = 4,     detail = 0  }).
 -define( UNAUTHORIZED                   , #method{name = unauthorized              , code = 4,     detail = 1  }).
 -define( BAD_OPTION                     , #method{name = bad_option                , code = 4,     detail = 2  }).
@@ -90,9 +91,17 @@
 -define( PRECONDITION_FAILED            , #method{name = precondition_failed       , code = 4,     detail = 12 }).
 -define( REQUEST_ENTITY_TOO_LARGE       , #method{name = request_entity_too_large  , code = 4,     detail = 13 }).
 -define( UNSUPPORTED_CONTENT_FORMAT     , #method{name = unsupported_content_format, code = 4,     detail = 15 }).
+
 -define( INTERNAL_SERVER_ERROR          , #method{name = internal_server_error     , code = 5,     detail = 0  }).
 -define( NOT_IMPLEMENTED                , #method{name = not_implemented           , code = 5,     detail = 1  }).
 -define( BAD_GATEWAY                    , #method{name = bad_gateway               , code = 5,     detail = 2  }).
 -define( SERVICE_UNAVAILABLE            , #method{name = service_unavailable       , code = 5,     detail = 3  }).
 -define( GATEWAY_TIMEOUT                , #method{name = gateway_timeout           , code = 5,     detail = 4  }).
 -define( PROXYING_NOT_SUPPORTED         , #method{name = proxying_not_supported    , code = 5,     detail = 5  }).
+
+-define( UN_ASSIGNED                    , #method{name = un_assigned               , code = 7,     detail = 0  }).
+-define( CSM                            , #method{name = csm                       , code = 7,     detail = 1  }).
+-define( PING                           , #method{name = ping                      , code = 7,     detail = 2  }).
+-define( PONG                           , #method{name = pong                      , code = 7,     detail = 3  }).
+-define( RELAEASE                       , #method{name = release                   , code = 7,     detail = 4  }).
+-define( ABORT                          , #method{name = abort                     , code = 7,     detail = 5  }).

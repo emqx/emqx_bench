@@ -10,7 +10,7 @@
 -author("DDDHuang").
 
 %% API
--export([encode/1, decode/1]).
+-export([serialize/1, parse/1]).
 -export([get_option_param/3, get_uri_path/1]).
 
 -export([build_option/2]).
@@ -18,10 +18,10 @@
 -include("coap.hrl").
 
 %%------------------------------------------------------------------
-%% encode
+%% serialize
 %%------------------------------------------------------------------
--spec encode(#coap_message{}) -> {ok, binary()} | {error, not_support}.
-encode(#coap_message{
+-spec serialize(#coap_message{}) -> {ok, binary()} | {error, not_support}.
+serialize(#coap_message{
     type    = Type,
     token   = Token,
     method  = #method{code = Code, detail = Detail},
@@ -37,13 +37,13 @@ encode(#coap_message{
                 (encode_options(Options)),
                 (encode_payload(PayLoad))]),
     {ok, Result};
-encode(_Data) -> {error, not_support}.
+serialize(_Data) -> {error, not_support}.
 
 %%------------------------------------------------------------------
-%% decode
+%% parse
 %%------------------------------------------------------------------
--spec decode(binary()) -> {ok, #coap_message{}} | {error, any()}.
-decode(<<?VERSION:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, MessageID:16, Token:TKL/bytes,
+-spec parse(binary()) -> {ok, #coap_message{}} | {error, any()}.
+parse(<<?VERSION:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, MessageID:16, Token:TKL/bytes,
     Tail/binary>>) ->
     {Options, Payload} = decode_options_payload(Tail),
     CoAPMessage = #coap_message{
@@ -55,8 +55,20 @@ decode(<<?VERSION:2, TypeCode:2, TKL:4, MethodCode:3, MethodCodeDetail:5, Messag
                         payload = Payload
                     },
     {ok, CoAPMessage};
-decode(_Data) -> {error, un_support_packet}.
+parse(_Data) -> {error, un_support_packet}.
+%%------------------------------------------------------------------
+%% uri path
 
+get_uri_path(#coap_message{options = Options}) -> {ok, get_uri_path(Options, "")};
+get_uri_path(_) -> {error, un_support}.
+
+%%------------------------------------------------------------------
+%% any option param
+
+get_option_param(#coap_message{options = Options} = CoAPMessage, Key, DataType)
+    when is_record(CoAPMessage, coap_message) ->
+    {ok, get_option_param(Options, Key, DataType, [])};
+get_option_param(_Data, _Key, _DataType) -> {error, un_support}.
 
 %%------------------------------------------------------------------
 %%  internal function
@@ -101,19 +113,11 @@ decode_delta_len(Delta, Tail)                              when Delta <  13 -> {
 decode_delta_len(Delta, <<DeltaTail:8,  Tail/binary>>)     when Delta == 13 -> {DeltaTail + 13,    Tail};
 decode_delta_len(Delta, <<DeltaTail:16, Tail/binary>>)     when Delta == 14 -> {DeltaTail + 269,   Tail}.
 
-get_uri_path(#coap_message{options = Options}) -> {ok, get_uri_path(Options, "")};
-get_uri_path(_) -> {error, un_support}.
-
 get_uri_path([], Result) -> Result;
 get_uri_path([#option{name = uri_path, value = Value} | Tail], Result) ->
     get_uri_path(Tail, list_to_binary([Result, "/", Value]));
 get_uri_path([#option{name = _OtherOption, value = _Value} | Tail], Result) ->
     get_uri_path(Tail, Result).
-
-get_option_param(#coap_message{options = Options} = CoAPMessage, Key, DataType)
-    when is_record(CoAPMessage, coap_message) ->
-    {ok, get_option_param(Options, Key, DataType, [])};
-get_option_param(_Data, _Key, _DataType) -> {error, un_support}.
 
 get_option_param([], _Key, _DataType, Result) -> lists:reverse(Result);
 get_option_param([Data | Tail], Key, DataType, Result) ->

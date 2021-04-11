@@ -222,7 +222,8 @@ publish_binary_payload(DataSetID, Data) ->
 
 publish(ProductDataType, Token, Payload) ->
     ContentForMate = case ProductDataType of
-        json            -> ?APPLICATION_VNDOMALWM2M_JSON;
+        % json            -> ?APPLICATION_VNDOMALWM2M_JSON;
+        json            -> ?APPLICATION_OCTET_STREAM;
         binary          -> ?APPLICATION_OCTET_STREAM;
         pass_through    -> ?APPLICATION_OCTET_STREAM
     end,

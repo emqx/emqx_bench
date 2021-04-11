@@ -140,8 +140,9 @@ call_command(From, _, State) ->
 udp_message(_Sock, _PeerIP, _PeerPortNo, Packet, State) ->
     udp_message(Packet, State).
 udp_message(Packet, State) ->
-    try coap_message_util:decode(Packet) of
+    try coap_message_util:parse(Packet) of
         {ok, CoAPMessage} ->
+            io:format("<<<<~0p~n", [CoAPMessage]),
             apply_callback(CoAPMessage, State);
         _ ->
             keep_state_and_data
@@ -243,7 +244,7 @@ do_request(CoAPMessage, RequestCallback, #coap_state{request = RequestMap} = Sta
 %%--------------------------------------------------------------------------------
 do_send(CoAPMessage, #coap_state{socket = Socket, host = Host, port = Port} = State) ->
     io:format(">>>>~n  ~0p~n", [CoAPMessage]),
-    {ok, Package} = coap_message_util:encode(CoAPMessage),
+    {ok, Package} = coap_message_util:serialize(CoAPMessage),
     gen_udp:send(Socket, Host, Port, Package),
     {keep_state, State}.
 
