@@ -36,12 +36,10 @@
             publish/2,
             deregister/1]).
 
--export([init/1, build_message/2, handle_message/2]).
+-export([init/1, build_message/2, handle_message/2, task_result/3]).
 
 start_link(Args) ->
-    Fun = fun()-> ok end,
-    spawn(Fun),
-    LWArgs = [{callback, ?MODULE, Args}],
+    LWArgs = [{callback, {?MODULE, Args}}],
     gen_statem:start_link(?COAP, Args ++ LWArgs, []).
 
 %%--------------------------------------------------------------------------------
@@ -57,7 +55,7 @@ deregister(Pid) -> lw_request(Pid, ?FUNCTION_NAME).
 %%--------------------------------------------------------------------------------
 %%  internal function
 %%--------------------------------------------------------------------------------
-init(Args)-> 
+init(Args) -> 
     lists:foldl(fun(Arg, State) -> do_init(Arg, State) end, #lw_state{}, Args).
 do_init({imei, IMEI}, State) -> State#lw_state{imei = IMEI};
 do_init({register_payload, Payload} , State) -> State#lw_state{register_payload = Payload};
@@ -77,7 +75,7 @@ do_init({task_callback, CallBack}, State) -> State#lw_state{task_callback = Call
 do_init({_, _}, State) -> State.
 
 lw_request(Pid, Args) -> 
-    coap_simulator:request(Pid, build_message, Args).
+    coap_simulator:request(Pid, Args).
 
 %%--------------------------------------------------------------------------------
 %%  coap simulator callback
@@ -111,13 +109,18 @@ handle_message(#coap_message{type = ?CON, method = ?GET, id = MessageID, token =
             {lwm2m_message_util:simple_ack(CoAPMessage, ?CHANGED), State};
         _ -> ignore
     end,
-    gen_statem:cast(self(), {send, ResponseCoAPMessage}),
-    {ok, NewState};
+    {ok, ResponseCoAPMessage, NewState};
+
 handle_message(#coap_message{type = ?CON, method = ?PUT} = CoAPMessage, State) ->
     {ResponseCoAPMessage, NewState} = {lwm2m_message_util:simple_ack(CoAPMessage, ?CHANGED), State},
     gen_statem:cast(self(), {send, ResponseCoAPMessage}),
-    {ok, NewState};
-handle_message(_Message, Loop) -> {ok, Loop}.
+    {ok, ResponseCoAPMessage, NewState};
 
-% task_response(Message, Task, #lw{}) ->
+handle_message(_Message, Loop) -> 
+    {ok, Loop}.
+
+
+task_result(_Task, _Result, LWState) ->
+    % io:format("Task ~0p ~0p ~n", [Task, Result]),
+    {ok, LWState}.
 

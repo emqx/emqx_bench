@@ -70,21 +70,12 @@ simple_test() ->
             {lifetime, 300}
         ],
     {ok, Pid} = supervisor:start_child(?SERVER, [Args]),
-    Result = lwm2m_simulator:register(Pid),
-    io:format("~0p~n", [Result]),
-    sleep(2),
+    lwm2m_simulator:register(Pid),
+    timer:sleep(2000),
     % {"serviceId":1,"str_10":"inerlang"}
-    PubAck = lwm2m_simulator:publish(Pid, jsx:encode([{<<"serviceId">>, 1}, {<<"str_10">>, <<"inerlang">>}])),
-    io:format("PubAck  ~0p~n", [PubAck]),
-    sleep(20),
-    io:format("logout ~0p~n", [lwm2m_simulator:deregister(Pid)]),
-    ok.
-
-sleep(Time) when Time > 0 ->
-    timer:sleep(1 * 1000),
-    io:format("beep ~0p~n", [Time]),
-    sleep(Time - 1);
-sleep(_Time) ->
+    lwm2m_simulator:publish(Pid, jsx:encode([{<<"serviceId">>, 1}, {<<"str_10">>, <<"inerlang">>}])),
+    timer:sleep(2000),
+    lwm2m_simulator:deregister(Pid),
     ok.
 
 
@@ -112,9 +103,8 @@ bs_sm2_test() ->
     erlang:register(lw, Pid),
     Result = lwm2m_simulator:bootstrap_sm2(lw),
     io:format("~0p~n", [Result]),
-    sleep(2),
+
 %%    lwm2m_simulator:bootstrap_finished(lw),
-    sleep(10),
 %%    io:format("logout ~0p~n", [lwm2m_simulator:deregister(lw)]).
     ok.
 
