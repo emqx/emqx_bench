@@ -4,7 +4,7 @@
 -define( ACK_TIMEOUT        , 200).
 -define( MAX_RETRANSMIT     , 4).
 
--define( REQUEST_TIEMOUT    , 4800).
+-define( REQUEST_TIMEOUT    , 4800).
 
 -define( MAX_BLOCK_SIZE     , 1024  ).
 -define( DEFAULT_MAX_AGE    , 60    ).
@@ -105,5 +105,5 @@
 -define( CSM                            , #method{name = csm                       , code = 7,     detail = 1  }).
 -define( PING                           , #method{name = ping                      , code = 7,     detail = 2  }).
 -define( PONG                           , #method{name = pong                      , code = 7,     detail = 3  }).
--define( RELAEASE                       , #method{name = release                   , code = 7,     detail = 4  }).
+-define( RELEASE                       , #method{name = release                   , code = 7,     detail = 4  }).
 -define( ABORT                          , #method{name = abort                     , code = 7,     detail = 5  }).

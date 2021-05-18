@@ -19,7 +19,7 @@
 
 -export([init/1, 
         format_status/2,
-        working/3, 
+        working/3,
         waiting/3,
         terminate/3,
         code_change/4,
@@ -43,7 +43,7 @@
   socket                      :: gen_udp:socket() | undefined,
   host = {127, 0, 0, 1}       :: binary() | inet:ip_address(),
   port = 5683                 :: integer(),
-  message_id = 0              :: integer(),
+  message_id = 1              :: integer(),
   tasks = []                  :: list(),
   %%  ResponseMessageID :: integer => Task :: #task{}}
   task_map = #{}              :: map(), 
@@ -74,7 +74,7 @@ request(Pid, CallbackArgs) ->
   new_task(Pid, Task).
 
 wait(Pid) ->
-  Task = #task{action = wait, args = ?REQUEST_TIEMOUT},
+  Task = #task{action = wait, args = ?REQUEST_TIMEOUT},
   new_task(Pid, Task).
 
 %%%===================================================================
@@ -92,7 +92,7 @@ callback_mode() ->
   state_functions.
 
 format_status(_Opt, [_PDict, _StateName, _State]) ->
-  Status = state_name,
+  Status = working,
   Status.
 
 working(internal, execute_task, State) ->
@@ -151,7 +151,7 @@ new_socket() ->
   Socket.
 
 new_task(Pid, Task) ->
-  try gen_statem:call(Pid, {new_task, Task}, ?REQUEST_TIEMOUT)
+  try gen_statem:call(Pid, {new_task, Task}, ?REQUEST_TIMEOUT)
   catch _:_ -> 
     {fail, timeout}
   end.
@@ -174,7 +174,7 @@ udp_message(Packet, State) ->
       coap_message_util:parse(Packet)
   of
       {ok, CoAPMessage} ->
-          log("receive ~0p~n", [CoAPMessage]),
+          log("receive <<<~n ~0p~n", [CoAPMessage]),
           receive_message(CoAPMessage, State);
       _ ->
           keep_state_and_data
@@ -252,7 +252,7 @@ execute_task(#coap_state{tasks = [#task{action = request} = Task | Tasks]} = Sta
 
 do_wait(Task, State) ->
   {next_state, waiting, State, 
-    [{state_timeout, ?REQUEST_TIEMOUT, {Task, ?REQUEST_TIEMOUT, ?MAX_RETRANSMIT}}]}.
+    [{state_timeout, ?REQUEST_TIMEOUT, {Task, ?REQUEST_TIMEOUT, ?MAX_RETRANSMIT}}]}.
 
 do_request(#task{args = CoAPMessage} = Task, #coap_state{task_map = TaskMap} = State) ->
   {Message1 = #coap_message{id = MessageID}, State1} = sync_id(CoAPMessage, State),
@@ -264,13 +264,13 @@ do_request(#task{args = CoAPMessage} = Task, #coap_state{task_map = TaskMap} = S
 do_send(CoAPMessage, #coap_state{socket = Socket, host = Host, port = Port}) ->
   {ok, Package} = coap_message_util:serialize(CoAPMessage),
   gen_udp:send(Socket, Host, Port, Package),
-  log("send message ~0p~n", [CoAPMessage]).
+  log("send message >>>>~n ~0p~n", [CoAPMessage]).
 
 
 sync_id(#coap_message{id = ID} = CoAPMessage, #coap_state{message_id = LocalID} = State) when LocalID > ID ->
   {CoAPMessage#coap_message{id = LocalID}, State#coap_state{message_id = LocalID + 1}};
 
-sync_id(#coap_message{id = ID} = CoAPMessage, State) -> 
+sync_id(#coap_message{id = ID} = CoAPMessage, State) ->
   {CoAPMessage, State#coap_state{message_id = ID + 1}}.
 
 sync_state_id(#coap_message{id = ID}, #coap_state{message_id = LocalID} = State) when LocalID > ID ->
