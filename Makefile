@@ -15,6 +15,9 @@ eunit: compile
 rel:
 	$(REBAR) release
 
+prod:
+	$(REBAR) as prod tar
+
 xref:
 	$(REBAR) xref
 
